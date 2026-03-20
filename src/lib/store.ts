@@ -1,7 +1,7 @@
-import { Driver, Load, Expense, Invoice, Vehicle } from "./types";
+import { DispatchCodeDefinition, Driver, DriverBoardEntry, DriverDailyUpdate, Load, Expense, Invoice, Vehicle } from "./types";
 
 // Simple localStorage-backed store with event emitter for reactivity
-type StoreKey = "drivers" | "loads" | "expenses" | "invoices" | "vehicles";
+type StoreKey = "drivers" | "driverUpdates" | "driverBoards" | "dispatchCodes" | "loads" | "expenses" | "invoices" | "vehicles";
 
 const DEFAULTS: Record<StoreKey, unknown[]> = {
   drivers: [
@@ -13,6 +13,62 @@ const DEFAULTS: Record<StoreKey, unknown[]> = {
     { id: "d6", name: "James Peterson", phone: "(469) 555-1428", email: "james.p@haulit.com", licenseNumber: "TX-CDL-41772", licenseExpiry: "2025-09-18", status: "inactive", hireDate: "2020-03-14", totalMiles: 145600, totalEarnings: 231000 },
     { id: "d7", name: "Aisha Brooks", phone: "(770) 555-5503", email: "aisha.b@haulit.com", licenseNumber: "GA-CDL-68394", licenseExpiry: "2027-07-22", status: "active", hireDate: "2024-02-01", totalMiles: 12400, totalEarnings: 24600, assignedVehicleId: "v5" },
   ] as Driver[],
+  driverUpdates: [
+    { id: "u1", driverId: "d1", date: "2026-03-19", status: "en_route", location: "Birmingham, AL", milesDriven: 540, notes: "On schedule with Dallas to Atlanta shipment.", nextAction: "Morning ETA check-in before final leg.", createdAt: "2026-03-19T18:15:00.000Z" },
+    { id: "u2", driverId: "d2", date: "2026-03-19", status: "available", location: "Houston, TX", milesDriven: 135, notes: "Trailer secured and paperwork cleared for dispatch.", nextAction: "Depart yard at 07:00 for Miami route.", createdAt: "2026-03-19T16:40:00.000Z" },
+    { id: "u3", driverId: "d3", date: "2026-03-19", status: "delivered", location: "Houston, TX", milesDriven: 420, notes: "Completed Greenfield delivery with no exceptions.", nextAction: "Stand by for next assignment.", createdAt: "2026-03-19T14:25:00.000Z" },
+    { id: "u4", driverId: "d5", date: "2026-03-19", status: "available", location: "Dallas, TX", milesDriven: 0, notes: "Back in yard after Southwest Dealers drop.", nextAction: "Truck wash and reset logs.", createdAt: "2026-03-19T11:10:00.000Z" },
+    { id: "u5", driverId: "d7", date: "2026-03-19", status: "off_duty", location: "Atlanta, GA", milesDriven: 0, notes: "Off duty after prior delivery run.", nextAction: "Return Sunday evening for Monday dispatch.", createdAt: "2026-03-19T09:00:00.000Z" },
+  ] as DriverDailyUpdate[],
+  driverBoards: [
+    {
+      id: "b1",
+      driverId: "d1",
+      date: "2026-03-19",
+      items: ["9-SBT", "8-SECOR"],
+      stops: [
+        { id: "b1s1", carCount: 9, pickupLocation: "SBT", dropoffLocation: "RK TAVERN", status: "completed", notes: "Morning route closed out the same day." },
+        { id: "b1s2", carCount: 8, pickupLocation: "SECOR", dropoffLocation: "SHOP KEL", status: "held_overnight", overnightLocation: "SHOP KEL", notes: "Held in shop for next-day dispatch." },
+      ],
+      updatedAt: "2026-03-19T18:20:00.000Z",
+    },
+    {
+      id: "b2",
+      driverId: "d2",
+      date: "2026-03-19",
+      items: ["9-NBG", "9-DAG"],
+      stops: [
+        { id: "b2s1", carCount: 9, pickupLocation: "NBG", dropoffLocation: "FAMILY", status: "completed", notes: "Ford/Enfield run completed." },
+        { id: "b2s2", carCount: 9, pickupLocation: "DAG", dropoffLocation: "SASI", status: "held_overnight", overnightLocation: "SHOP", notes: "Remaining cars held overnight at the shop." },
+      ],
+      updatedAt: "2026-03-19T17:45:00.000Z",
+    },
+    {
+      id: "b3",
+      driverId: "d3",
+      date: "2026-03-19",
+      items: ["1-HEALEY", "1-HV"],
+      stops: [
+        { id: "b3s1", carCount: 1, pickupLocation: "HEALEY", dropoffLocation: "HYUNDAI", status: "completed", notes: "Single-car move completed." },
+        { id: "b3s2", carCount: 1, pickupLocation: "HV", dropoffLocation: "CJDR", status: "completed", notes: "Second move closed out late afternoon." },
+      ],
+      updatedAt: "2026-03-19T16:10:00.000Z",
+    },
+    {
+      id: "b4",
+      driverId: "d5",
+      date: "2026-03-19",
+      items: ["1-CURRY"],
+      stops: [
+        { id: "b4s1", carCount: 1, pickupLocation: "CURRY", dropoffLocation: "SUBARU", status: "held_overnight", overnightLocation: "SHOP", notes: "Vehicle staged for delivery the next morning." },
+      ],
+      updatedAt: "2026-03-19T13:00:00.000Z",
+    },
+  ] as DriverBoardEntry[],
+  dispatchCodes: [
+    { id: "c1", token: "OFF", meaning: "Driver is off duty.", kind: "status" },
+    { id: "c2", token: "SHOP", meaning: "Truck is in the shop or yard service area.", kind: "status" },
+  ] as DispatchCodeDefinition[],
   loads: [
     { id: "l1", referenceNumber: "LD-2026-0147", customer: "Greenfield Motors", customerPhone: "(512) 555-3200", pickupLocation: "Dallas, TX", deliveryLocation: "Atlanta, GA", pickupDate: "2026-03-18", deliveryDate: "2026-03-20", vehicleInfo: "2024 Toyota Camry (x3)", status: "in_transit", driverId: "d1", price: 2850, notes: "Three sedans, covered transport" },
     { id: "l2", referenceNumber: "LD-2026-0148", customer: "Apex Auto Group", customerPhone: "(404) 555-8900", pickupLocation: "Houston, TX", deliveryLocation: "Miami, FL", pickupDate: "2026-03-19", deliveryDate: "2026-03-22", vehicleInfo: "2025 Ford F-150 (x2)", status: "dispatched", driverId: "d2", price: 3400, notes: "" },
@@ -67,12 +123,18 @@ function setStore<T>(key: StoreKey, data: T[]) {
 }
 
 export function getDrivers(): Driver[] { return getStore<Driver>("drivers"); }
+export function getDriverUpdates(): DriverDailyUpdate[] { return getStore<DriverDailyUpdate>("driverUpdates"); }
+export function getDriverBoards(): DriverBoardEntry[] { return getStore<DriverBoardEntry>("driverBoards"); }
+export function getDispatchCodes(): DispatchCodeDefinition[] { return getStore<DispatchCodeDefinition>("dispatchCodes"); }
 export function getLoads(): Load[] { return getStore<Load>("loads"); }
 export function getExpenses(): Expense[] { return getStore<Expense>("expenses"); }
 export function getInvoices(): Invoice[] { return getStore<Invoice>("invoices"); }
 export function getVehicles(): Vehicle[] { return getStore<Vehicle>("vehicles"); }
 
 export function saveDrivers(d: Driver[]) { setStore("drivers", d); }
+export function saveDriverUpdates(d: DriverDailyUpdate[]) { setStore("driverUpdates", d); }
+export function saveDriverBoards(d: DriverBoardEntry[]) { setStore("driverBoards", d); }
+export function saveDispatchCodes(d: DispatchCodeDefinition[]) { setStore("dispatchCodes", d); }
 export function saveLoads(d: Load[]) { setStore("loads", d); }
 export function saveExpenses(d: Expense[]) { setStore("expenses", d); }
 export function saveInvoices(d: Invoice[]) { setStore("invoices", d); }

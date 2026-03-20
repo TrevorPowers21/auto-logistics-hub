@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppLayout } from "@/components/AppLayout";
 import Index from "./pages/Index.tsx";
+import DriverRecapPage from "./pages/DriverRecap.tsx";
 import DriversPage from "./pages/Drivers.tsx";
 import LoadsPage from "./pages/Loads.tsx";
 import ExpensesPage from "./pages/Expenses.tsx";
@@ -25,6 +26,7 @@ const App = () => (
             {/* Nested routes won't work this way, use layout wrapper */}
           </Route>
           <Route path="/" element={<AppLayout><Index /></AppLayout>} />
+          <Route path="/driver-recap" element={<AppLayout><DriverRecapPage /></AppLayout>} />
           <Route path="/drivers" element={<AppLayout><DriversPage /></AppLayout>} />
           <Route path="/loads" element={<AppLayout><LoadsPage /></AppLayout>} />
           <Route path="/expenses" element={<AppLayout><ExpensesPage /></AppLayout>} />

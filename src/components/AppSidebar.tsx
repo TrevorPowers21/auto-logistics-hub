@@ -5,6 +5,7 @@ import {
   DollarSign,
   FileText,
   CarFront,
+  ClipboardList,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -23,6 +24,7 @@ import {
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Driver Recap", url: "/driver-recap", icon: ClipboardList },
   { title: "Loads", url: "/loads", icon: Truck },
   { title: "Drivers", url: "/drivers", icon: Users },
   { title: "Expenses", url: "/expenses", icon: DollarSign },

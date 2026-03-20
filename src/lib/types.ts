@@ -14,6 +14,48 @@ export interface Driver {
   assignedVehicleId?: string;
 }
 
+export type DriverDailyStatus = "available" | "en_route" | "delivered" | "delay" | "off_duty";
+
+export interface DriverDailyUpdate {
+  id: string;
+  driverId: string;
+  date: string;
+  status: DriverDailyStatus;
+  location: string;
+  milesDriven: number;
+  notes: string;
+  nextAction: string;
+  createdAt: string;
+}
+
+export interface DriverBoardEntry {
+  id: string;
+  driverId: string;
+  date: string;
+  items: string[];
+  stops?: DriverBoardStop[];
+  updatedAt: string;
+}
+
+export interface DispatchCodeDefinition {
+  id: string;
+  token: string;
+  meaning: string;
+  kind: "sequence" | "location" | "status" | "other";
+}
+
+export type DispatchStopStatus = "completed" | "held_overnight";
+
+export interface DriverBoardStop {
+  id: string;
+  carCount: number;
+  pickupLocation: string;
+  dropoffLocation: string;
+  status: DispatchStopStatus;
+  overnightLocation?: string;
+  notes?: string;
+}
+
 export type LoadStatus = "booked" | "dispatched" | "in_transit" | "delivered" | "cancelled";
 
 export interface Load {
