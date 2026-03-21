@@ -6,6 +6,9 @@ import {
   FileText,
   CarFront,
   ClipboardList,
+  MapPinned,
+  Car,
+  Settings,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -25,11 +28,14 @@ import {
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Driver Recap", url: "/driver-recap", icon: ClipboardList },
+  { title: "Cars", url: "/cars", icon: Car },
   { title: "Loads", url: "/loads", icon: Truck },
-  { title: "Drivers", url: "/drivers", icon: Users },
-  { title: "Expenses", url: "/expenses", icon: DollarSign },
   { title: "Invoices", url: "/invoices", icon: FileText },
-  { title: "Vehicles", url: "/vehicles", icon: CarFront },
+  { title: "Expenses", url: "/expenses", icon: DollarSign },
+  { title: "Customers", url: "/locations", icon: MapPinned },
+  { title: "Drivers", url: "/drivers", icon: Users },
+  { title: "Fleet", url: "/vehicles", icon: CarFront },
+  { title: "Settings", url: "/settings", icon: Settings },
 ];
 
 export function AppSidebar() {
@@ -47,7 +53,7 @@ export function AppSidebar() {
           {!collapsed && (
             <div className="flex flex-col">
               <span className="text-sm font-semibold text-sidebar-accent-foreground tracking-tight">
-                AutoTransport
+                Monroe Auto Transport
               </span>
               <span className="text-xs text-sidebar-foreground/60">
                 Fleet Manager

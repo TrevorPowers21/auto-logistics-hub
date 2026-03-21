@@ -12,6 +12,11 @@ export interface Driver {
   totalMiles: number;
   totalEarnings: number;
   assignedVehicleId?: string;
+  externalSource?: "samsara";
+  externalId?: string;
+  username?: string;
+  timezone?: string;
+  lastSyncedAt?: string;
 }
 
 export type DriverDailyStatus = "available" | "en_route" | "delivered" | "delay" | "off_duty";
@@ -44,6 +49,17 @@ export interface DispatchCodeDefinition {
   kind: "sequence" | "location" | "status" | "other";
 }
 
+export interface LocationProfile {
+  id: string;
+  code: string;
+  name: string;
+  contactName: string;
+  phone: string;
+  email: string;
+  address: string;
+  notes: string;
+}
+
 export type DispatchStopStatus = "completed" | "held_overnight";
 
 export interface DriverBoardStop {
@@ -53,6 +69,18 @@ export interface DriverBoardStop {
   dropoffLocation: string;
   status: DispatchStopStatus;
   overnightLocation?: string;
+  notes?: string;
+  carId?: string;
+}
+
+export interface Car {
+  id: string;
+  vin: string;
+  year: number;
+  make: string;
+  model: string;
+  vehicleName: string;
+  color?: string;
   notes?: string;
 }
 
@@ -109,4 +137,24 @@ export interface Vehicle {
   licensePlate: string;
   status: "active" | "maintenance" | "retired";
   assignedDriverId?: string;
+  mileage?: number;
+  notes?: string;
+  maintenanceLog?: FleetMaintenanceEntry[];
+  externalSource?: "samsara";
+  externalId?: string;
+  lastSyncedAt?: string;
+  lastKnownLocation?: string;
+  lastKnownLocationAt?: string;
+  lastKnownLatitude?: number;
+  lastKnownLongitude?: number;
+  lastKnownSpeedMilesPerHour?: number;
+  engineState?: string;
+}
+
+export interface FleetMaintenanceEntry {
+  id: string;
+  date: string;
+  type: string;
+  mileage: number;
+  details: string;
 }
