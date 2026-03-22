@@ -1,21 +1,6 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin } from "vite";
-
-const SAMSARA_API_BASE = process.env.VITE_SAMSARA_API_BASE || "https://api.samsara.com";
-const TOKEN_FILE = path.resolve(process.cwd(), ".samsara.local");
-const DEFAULT_STAT_TYPES = ["gps", "obdOdometerMeters", "gpsOdometerMeters", "engineStates"] as const;
-
-interface SamsaraPagination {
-  endCursor?: string;
-  hasNextPage?: boolean;
-}
-
-interface SamsaraListResponse<T> {
-  data: T[];
-  pagination?: SamsaraPagination;
-}
+import { readSavedToken, readSyncState, runSamsaraSync, writeSavedToken } from "./samsara-service.js";
 
 export function samsaraProxyPlugin(): Plugin {
   return {
@@ -40,25 +25,23 @@ export function samsaraProxyPlugin(): Plugin {
             return sendJson(res, 200, { ok: true });
           }
 
+          if (req.method === "GET" && req.url === "/api/samsara/status") {
+            return sendJson(res, 200, {
+              state: await readSyncState(),
+            });
+          }
+
           if (req.method === "POST" && req.url === "/api/samsara/sync") {
             const body = await readJsonBody<{ cursor?: string }>(req);
-            const token = await readSavedToken();
-
-            if (!token) {
-              return sendJson(res, 400, { error: "No Samsara token has been saved on the local server." });
-            }
-
-            const [vehicleDirectory, vehicleFeed, activeDrivers, deactivatedDrivers] = await Promise.all([
-              fetchPaginated("/fleet/vehicles", token),
-              requestSamsara(`/fleet/vehicles/stats/feed?types=${DEFAULT_STAT_TYPES.join(",")}${body.cursor ? `&after=${encodeURIComponent(body.cursor)}` : ""}`, token),
-              fetchPaginated("/fleet/drivers?driverActivationStatus=active", token),
-              fetchPaginated("/fleet/drivers?driverActivationStatus=deactivated", token),
-            ]);
+            const state = await runSamsaraSync({ cursor: body.cursor });
 
             return sendJson(res, 200, {
-              vehicleDirectory,
-              vehicleFeed,
-              drivers: [...activeDrivers.data, ...deactivatedDrivers.data],
+              vehicleDirectory: state.vehicleDirectory,
+              vehicleFeed: state.vehicleFeed,
+              drivers: state.drivers,
+              syncedAt: state.syncedAt,
+              cursor: state.cursor,
+              counts: state.counts,
             });
           }
 
@@ -71,59 +54,6 @@ export function samsaraProxyPlugin(): Plugin {
       });
     },
   };
-}
-
-async function fetchPaginated(pathname: string, token: string) {
-  let endCursor: string | undefined;
-  let hasNextPage = true;
-  const data: unknown[] = [];
-
-  while (hasNextPage) {
-    const separator = pathname.includes("?") ? "&" : "?";
-    const pathWithCursor = endCursor ? `${pathname}${separator}after=${encodeURIComponent(endCursor)}` : pathname;
-    const page = await requestSamsara<SamsaraListResponse<unknown>>(pathWithCursor, token);
-    data.push(...(page.data || []));
-    endCursor = page.pagination?.endCursor;
-    hasNextPage = Boolean(page.pagination?.hasNextPage && endCursor);
-  }
-
-  return {
-    data,
-    pagination: {
-      endCursor,
-      hasNextPage: false,
-    },
-  };
-}
-
-async function requestSamsara<T>(pathname: string, token: string): Promise<T> {
-  const response = await fetch(`${SAMSARA_API_BASE}${pathname}`, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/json",
-    },
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Samsara request failed (${response.status}): ${text || response.statusText}`);
-  }
-
-  return response.json() as Promise<T>;
-}
-
-async function readSavedToken() {
-  try {
-    const value = await fs.readFile(TOKEN_FILE, "utf8");
-    return value.trim();
-  } catch {
-    return "";
-  }
-}
-
-async function writeSavedToken(token: string) {
-  await fs.writeFile(TOKEN_FILE, token.trim(), "utf8");
 }
 
 async function readJsonBody<T>(req: IncomingMessage): Promise<T> {
