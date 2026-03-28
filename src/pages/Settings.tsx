@@ -8,10 +8,8 @@ import { toast } from "@/components/ui/sonner";
 import { getSavedSamsaraToken, saveSamsaraToken } from "@/lib/samsara";
 
 const integrations = [
-  { name: "Samsara", status: "Connected here", description: "Fleet and driver import token." },
-  { name: "Future API 1", status: "Not configured", description: "Reserved for another daily system." },
-  { name: "Future API 2", status: "Not configured", description: "Reserved for another daily system." },
-  { name: "Future API 3", status: "Not configured", description: "Reserved for another daily system." },
+  { name: "Samsara", status: "Active", description: "Fleet GPS tracking and driver sync. Configure the API token above." },
+  { name: "NHTSA VIN Decoder", status: "Active", description: "Public API for decoding VINs. No token required — used automatically in Fleet and Cars." },
 ];
 
 export default function SettingsPage() {
@@ -108,7 +106,11 @@ export default function SettingsPage() {
             <div key={integration.name} className="rounded-xl border p-4">
               <div className="flex items-center justify-between gap-3">
                 <p className="font-medium">{integration.name}</p>
-                <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
+                <span className={`rounded-full px-3 py-1 text-xs font-medium ${
+                  integration.status === "Active"
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "bg-muted text-muted-foreground"
+                }`}>
                   {integration.status}
                 </span>
               </div>

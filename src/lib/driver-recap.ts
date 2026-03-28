@@ -32,6 +32,7 @@ export interface BoardTotals {
   totalCars: number;
   completedCars: number;
   heldCars: number;
+  totalPay: number | null; // null when no pay rates are set
 }
 
 const activeLoadStatuses = new Set(["booked", "dispatched", "in_transit"]);
@@ -50,10 +51,18 @@ export function getYesterdayDate(): string {
 
 export function formatRecapHeading(date: string): string {
   return new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(`${date}T12:00:00`));
+}
+
+export function formatRecapHeadingShort(date: string): string {
+  return new Intl.DateTimeFormat("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
-    year: "numeric",
   }).format(new Date(`${date}T12:00:00`));
 }
 
@@ -112,6 +121,27 @@ export function buildDriverRecapRows(
       if (b.activeLoads !== a.activeLoads) return b.activeLoads - a.activeLoads;
       return a.driverName.localeCompare(b.driverName);
     });
+}
+
+/** Pay for a single stop. Returns null if no rate is configured. */
+export function getStopPay(stop: DriverBoardStop, driverDefaultRate?: number): number | null {
+  const rate = stop.payRatePerCar ?? driverDefaultRate;
+  if (rate === undefined || rate === null) return null;
+  return stop.carCount * rate;
+}
+
+/** Total pay for all stops. Returns null if no rates are configured at all. */
+export function getBoardPayTotal(stops: DriverBoardStop[], driverDefaultRate?: number): number | null {
+  let total = 0;
+  let hasAnyRate = false;
+  for (const stop of stops) {
+    const pay = getStopPay(stop, driverDefaultRate);
+    if (pay !== null) {
+      total += pay;
+      hasAnyRate = true;
+    }
+  }
+  return hasAnyRate ? total : null;
 }
 
 export function getCodeMeaning(token: string | undefined, definitions: DispatchCodeDefinition[]): string | undefined {
@@ -176,39 +206,42 @@ export function sanitizeBoardStops(stops: DriverBoardStop[]): DriverBoardStop[] 
     );
 }
 
-export function getBoardTotals(stops: DriverBoardStop[]): BoardTotals {
-  return stops.reduce<BoardTotals>((totals, stop) => {
-    totals.totalCars += stop.carCount;
-    if (stop.status === "completed") {
-      totals.completedCars += stop.carCount;
-    } else {
-      totals.heldCars += stop.carCount;
-    }
-    return totals;
-  }, { totalCars: 0, completedCars: 0, heldCars: 0 });
+export function getBoardTotals(stops: DriverBoardStop[], driverDefaultRate?: number): BoardTotals {
+  const base = stops.reduce<Omit<BoardTotals, "totalPay">>(
+    (totals, stop) => {
+      totals.totalCars += stop.carCount;
+      if (stop.status === "completed") {
+        totals.completedCars += stop.carCount;
+      } else {
+        totals.heldCars += stop.carCount;
+      }
+      return totals;
+    },
+    { totalCars: 0, completedCars: 0, heldCars: 0 },
+  );
+
+  return { ...base, totalPay: getBoardPayTotal(stops, driverDefaultRate) };
 }
 
 export function formatStopSummary(stop: DriverBoardStop, definitions: DispatchCodeDefinition[]): string {
   const pickupMeaning = getCodeMeaning(normalizeToken(stop.pickupLocation), definitions);
   const dropoffMeaning = getCodeMeaning(normalizeToken(stop.dropoffLocation), definitions);
-  const overnightMeaning = getCodeMeaning(normalizeToken(stop.overnightLocation), definitions);
+  const overnightMeaning = getCodeMeaning(normalizeToken(stop.overnightLocation ?? ""), definitions);
   const route = [
     `${stop.carCount} car${stop.carCount === 1 ? "" : "s"}`,
-    `PU ${pickupMeaning || stop.pickupLocation}`,
-    `DO ${dropoffMeaning || stop.dropoffLocation}`,
+    `PU: ${pickupMeaning || stop.pickupLocation}`,
+    `DO: ${dropoffMeaning || stop.dropoffLocation}`,
   ];
 
   if (stop.status === "held_overnight") {
-    route.push(`Held at ${overnightMeaning || stop.overnightLocation || "shop"}`);
+    route.push(`Split at ${overnightMeaning || stop.overnightLocation || "shop"}`);
   } else {
     route.push("Completed");
   }
 
-  if (stop.notes) {
-    route.push(stop.notes);
-  }
+  if (stop.notes) route.push(stop.notes);
 
-  return route.join(" | ");
+  return route.join("  |  ");
 }
 
 export function getBoardTokens(entries: DriverBoardEntry[]): string[] {
@@ -221,49 +254,180 @@ export function getBoardTokens(entries: DriverBoardEntry[]): string[] {
   )).sort((a, b) => a.localeCompare(b));
 }
 
-export function getUnresolvedBoardTokens(entries: DriverBoardEntry[], definitions: DispatchCodeDefinition[]): string[] {
-  return getBoardTokens(entries).filter((token) => !getCodeMeaning(token, definitions));
-}
-
-export function buildBoardExportText(
+/** Build a formatted daily recap export string. */
+export function buildDailyExportText(
   date: string,
-  drivers: Driver[],
-  rows: DriverRecapRow[],
-  boardEntries: DriverBoardEntry[],
-  definitions: DispatchCodeDefinition[],
+  driverRows: Array<{
+    driver: Driver;
+    stops: DriverBoardStop[];
+    totalCars: number;
+    completedCars: number;
+    heldCars: number;
+    totalPay: number | null;
+  }>,
+  pickupRecap: Array<{ location: string; cars: number }>,
+  dropoffRecap: Array<{ location: string; cars: number }>,
 ): string {
-  const rowByDriver = new Map(rows.map((row) => [row.driverId, row]));
-  const boardByDriver = new Map(boardEntries.map((entry) => [entry.driverId, entry]));
-  const activeDrivers = drivers.filter((driver) => driver.status !== "inactive");
-  const deliveredLoads = rows.reduce((sum, row) => sum + row.deliveries, 0);
-  const miles = rows.reduce((sum, row) => sum + row.milesDriven, 0);
-  const net = rows.reduce((sum, row) => sum + row.net, 0);
+  const divider = "─".repeat(60);
+  const heading = formatRecapHeading(date);
 
-  const header = [
-    `Driver recap for ${formatRecapHeading(date)}`,
-    `Active drivers: ${activeDrivers.filter((driver) => rowByDriver.get(driver.id)?.status !== "off_duty").length}`,
-    `Delivered loads: ${deliveredLoads}`,
-    `Miles logged: ${miles.toLocaleString()}`,
-    `Net revenue: $${net.toLocaleString()}`,
+  const totalCars = driverRows.reduce((s, r) => s + r.totalCars, 0);
+  const completedCars = driverRows.reduce((s, r) => s + r.completedCars, 0);
+  const heldCars = driverRows.reduce((s, r) => s + r.heldCars, 0);
+  const totalPayRows = driverRows.filter((r) => r.totalPay !== null);
+  const totalPay = totalPayRows.length > 0
+    ? totalPayRows.reduce((s, r) => s + (r.totalPay ?? 0), 0)
+    : null;
+
+  const lines: string[] = [
+    "MONROE AUTO TRANSPORT",
+    `DRIVER RECAP  —  ${heading}`,
+    divider,
+    "",
+    "DAILY TOTALS",
+    `  Cars Moved:   ${totalCars}   |   Completed: ${completedCars}   |   Split: ${heldCars}`,
+    totalPay !== null ? `  Total Pay:    $${totalPay.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : "",
     "",
   ];
 
-  const lines = activeDrivers.map((driver) => {
-    const row = rowByDriver.get(driver.id);
-    const stops = normalizeBoardStops(boardByDriver.get(driver.id));
-    const boardSummary = stops.slice(0, 4).map((stop) => formatStopSummary(stop, definitions)).join(" || ");
-    const totals = getBoardTotals(stops);
+  // Pickup/dropoff recap side by side
+  const maxLeft = Math.max(...pickupRecap.map((r) => r.location.length), 8);
+  lines.push("PICKUP LOCATIONS" + " ".repeat(maxLeft - 8 + 6) + "DROP-OFF LOCATIONS");
+  const maxRows = Math.max(pickupRecap.length, dropoffRecap.length);
+  for (let i = 0; i < maxRows; i++) {
+    const pu = pickupRecap[i];
+    const do_ = dropoffRecap[i];
+    const left = pu ? `  ${pu.location.padEnd(maxLeft + 2)} ${String(pu.cars).padStart(2)} car${pu.cars === 1 ? " " : "s"}` : "";
+    const right = do_ ? `    ${do_.location.padEnd(maxLeft + 2)} ${String(do_.cars).padStart(2)} car${do_.cars === 1 ? "" : "s"}` : "";
+    lines.push(left + right);
+  }
 
-    return [
-      `${driver.name} - ${row?.status.replace("_", " ") || "available"}`,
-      `Location: ${row?.location || "No update logged"}`,
-      `Board: ${boardSummary || "No board items logged"}`,
-      `Cars: ${totals.totalCars} total, ${totals.completedCars} completed, ${totals.heldCars} held`,
-      `Loads: ${row?.deliveries || 0} delivered, ${row?.activeLoads || 0} active`,
-      `Miles: ${(row?.milesDriven || 0).toLocaleString()}`,
-      `Next: ${row?.nextAction || "No next action logged"}`,
-    ].join(" | ");
-  });
+  lines.push("");
+  lines.push(divider);
+  lines.push("");
 
-  return [...header, ...lines].join("\n");
+  // Per-driver detail
+  for (const row of driverRows) {
+    if (row.stops.length === 0) continue;
+
+    const payStr = row.totalPay !== null
+      ? `  $${row.totalPay.toLocaleString("en-US", { minimumFractionDigits: 2 })}`
+      : "";
+    lines.push(`${row.driver.name.toUpperCase()}  —  ${row.totalCars} cars${payStr}`);
+    lines.push("  " + "─".repeat(56));
+
+    for (const stop of row.stops) {
+      const route = `${stop.pickupLocation} → ${stop.status === "held_overnight" ? (stop.overnightLocation || stop.dropoffLocation) : stop.dropoffLocation}`;
+      const statusStr = stop.status === "held_overnight" ? "Split    " : "Completed";
+      const rateStr = stop.payRatePerCar !== undefined
+        ? `$${stop.payRatePerCar}/car`
+        : (row.driver.payRatePerCar !== undefined ? `$${row.driver.payRatePerCar}/car` : "");
+      const stopPay = getStopPay(stop, row.driver.payRatePerCar);
+      const stopPayStr = stopPay !== null
+        ? `  $${stopPay.toLocaleString("en-US", { minimumFractionDigits: 2 })}`
+        : "";
+      const notesStr = stop.notes ? `  (${stop.notes})` : "";
+
+      lines.push(
+        `  ${String(stop.carCount).padStart(2)} cars  ${route.padEnd(30)}  ${statusStr}  ${rateStr}${stopPayStr}${notesStr}`,
+      );
+    }
+
+    lines.push("");
+  }
+
+  lines.push(divider);
+  lines.push(`Generated: ${new Date().toLocaleString()}`);
+  lines.push("Monroe Auto Transport Fleet Manager");
+
+  return lines.filter((l) => l !== undefined).join("\n");
+}
+
+/** Build a formatted weekly recap export string. */
+export function buildWeeklyExportText(
+  weekStart: string,
+  weekEnd: string,
+  weekDates: string[],
+  drivers: Driver[],
+  boards: DriverBoardEntry[],
+): string {
+  const divider = "─".repeat(80);
+  const startLabel = new Date(`${weekStart}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const endLabel = new Date(`${weekEnd}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const dayNames = weekDates.map((d) =>
+    new Date(`${d}T12:00:00`).toLocaleDateString("en-US", { weekday: "short" }),
+  );
+
+  const activeDrivers = drivers.filter((d) => d.status !== "inactive");
+
+  // Build per-driver per-day stats
+  const driverStats = activeDrivers.map((driver) => {
+    const dayCars = weekDates.map((date) => {
+      const board = boards.find((b) => b.driverId === driver.id && b.date === date);
+      const stops = normalizeBoardStops(board);
+      return stops.reduce((s, stop) => s + stop.carCount, 0);
+    });
+    const dayPay = weekDates.map((date) => {
+      const board = boards.find((b) => b.driverId === driver.id && b.date === date);
+      const stops = normalizeBoardStops(board);
+      return getBoardPayTotal(stops, driver.payRatePerCar);
+    });
+    const totalCars = dayCars.reduce((s, c) => s + c, 0);
+    const totalPayVals = dayPay.filter((p) => p !== null) as number[];
+    const totalPay = totalPayVals.length > 0 ? totalPayVals.reduce((s, p) => s + p, 0) : null;
+
+    return { driver, dayCars, dayPay, totalCars, totalPay };
+  }).filter((r) => r.totalCars > 0);
+
+  const lines: string[] = [
+    "MONROE AUTO TRANSPORT",
+    `WEEKLY RECAP  —  ${startLabel} – ${endLabel}`,
+    divider,
+    "",
+  ];
+
+  // Header row
+  const nameWidth = 22;
+  const dayWidth = 6;
+  const header = "DRIVER".padEnd(nameWidth) +
+    dayNames.map((d) => d.padStart(dayWidth)).join("") +
+    "  TOTAL".padStart(8) +
+    "  PAY".padStart(14);
+  lines.push(header);
+  lines.push("─".repeat(header.length));
+
+  for (const row of driverStats) {
+    const name = row.driver.name.slice(0, nameWidth - 1).padEnd(nameWidth);
+    const days = row.dayCars.map((c) => String(c || "—").padStart(dayWidth)).join("");
+    const total = String(row.totalCars).padStart(8);
+    const payStr = row.totalPay !== null
+      ? `$${row.totalPay.toLocaleString("en-US", { minimumFractionDigits: 2 })}`.padStart(14)
+      : "—".padStart(14);
+    lines.push(name + days + total + payStr);
+  }
+
+  // Fleet totals row
+  const fleetCars = weekDates.map((_, i) => driverStats.reduce((s, r) => s + r.dayCars[i], 0));
+  const fleetTotal = fleetCars.reduce((s, c) => s + c, 0);
+  const fleetPayRows = driverStats.filter((r) => r.totalPay !== null);
+  const fleetPay = fleetPayRows.length > 0
+    ? fleetPayRows.reduce((s, r) => s + (r.totalPay ?? 0), 0)
+    : null;
+
+  lines.push("─".repeat(header.length));
+  lines.push(
+    "FLEET TOTAL".padEnd(nameWidth) +
+    fleetCars.map((c) => String(c || "—").padStart(dayWidth)).join("") +
+    String(fleetTotal).padStart(8) +
+    (fleetPay !== null
+      ? `$${fleetPay.toLocaleString("en-US", { minimumFractionDigits: 2 })}`.padStart(14)
+      : "—".padStart(14)),
+  );
+
+  lines.push("");
+  lines.push(divider);
+  lines.push(`Generated: ${new Date().toLocaleString()}`);
+  lines.push("Monroe Auto Transport Fleet Manager");
+
+  return lines.join("\n");
 }

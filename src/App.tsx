@@ -25,9 +25,6 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          <Route element={<AppLayout><></></AppLayout>}>
-            {/* Nested routes won't work this way, use layout wrapper */}
-          </Route>
           <Route path="/" element={<AppLayout><Index /></AppLayout>} />
           <Route path="/driver-recap" element={<AppLayout><DriverRecapPage /></AppLayout>} />
           <Route path="/locations" element={<AppLayout><CustomersPage /></AppLayout>} />

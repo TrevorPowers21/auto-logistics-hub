@@ -17,6 +17,7 @@ export interface Driver {
   username?: string;
   timezone?: string;
   lastSyncedAt?: string;
+  payRatePerCar?: number; // default pay rate per car moved
 }
 
 export type DriverDailyStatus = "available" | "en_route" | "delivered" | "delay" | "off_duty";
@@ -71,7 +72,10 @@ export interface DriverBoardStop {
   overnightLocation?: string;
   notes?: string;
   carId?: string;
+  payRatePerCar?: number; // pay per car for this specific stop
 }
+
+export type CarStatus = "at_shop" | "in_transit" | "delivered";
 
 export interface Car {
   id: string;
@@ -82,6 +86,14 @@ export interface Car {
   vehicleName: string;
   color?: string;
   notes?: string;
+  // Movement tracking
+  status?: CarStatus;
+  receivedDate?: string;    // date car arrived at shop / was received
+  deliveredDate?: string;   // date car was delivered to final destination
+  pickupLocation?: string;  // where it was picked up from
+  deliveryLocation?: string; // where it was delivered to
+  driverId?: string;        // driver who moved/is moving this car
+  boardDate?: string;       // date of board entry associated with this car
 }
 
 export type LoadStatus = "booked" | "dispatched" | "in_transit" | "delivered" | "cancelled";

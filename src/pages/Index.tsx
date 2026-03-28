@@ -41,7 +41,7 @@ export default function Dashboard() {
     <div className="space-y-6 max-w-7xl">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground text-sm mt-1">Fleet overview for March 2026</p>
+        <p className="text-muted-foreground text-sm mt-1">Fleet overview for {new Date().toLocaleString("default", { month: "long", year: "numeric" })}</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
