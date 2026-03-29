@@ -6,11 +6,12 @@ export function samsaraProxyPlugin(): Plugin {
   return {
     name: "samsara-proxy",
     configureServer(server) {
-      server.middlewares.use(async (req, res, next) => {
+      server.middlewares.use((req, res, next) => {
         if (!req.url?.startsWith("/api/samsara")) {
-          next();
-          return;
+          return next();
         }
+
+        void (async () => {
 
         try {
           if (req.method === "GET" && req.url === "/api/samsara/token") {
@@ -51,6 +52,7 @@ export function samsaraProxyPlugin(): Plugin {
             error: error instanceof Error ? error.message : "Unknown Samsara proxy error",
           });
         }
+        })();
       });
     },
   };
