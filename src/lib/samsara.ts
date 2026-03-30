@@ -196,17 +196,15 @@ async function mergeSamsaraVehicles(
       continue;
     }
 
+    // Existing vehicle — only update GPS, mileage, engine state, and speed.
+    // Never overwrite user-managed fields (year, make, model, plate, status, notes, etc.)
     const existing = nextVehicles[existingIndex];
     nextVehicles[existingIndex] = {
       ...existing,
-      year: decodedVin?.year || existing.year,
-      make: decodedVin?.make || existing.make,
-      model: decodedVin?.model || item.name || existing.model,
-      vin: item.vin || existing.vin,
-      licensePlate: item.licensePlate || existing.licensePlate,
       externalSource: "samsara",
       externalId: item.id,
       lastSyncedAt: now,
+      // GPS + mileage only
       lastKnownLocation: stats.lastKnownLocation || existing.lastKnownLocation,
       lastKnownLocationAt: stats.lastKnownLocationAt || existing.lastKnownLocationAt,
       lastKnownLatitude: stats.lastKnownLatitude ?? existing.lastKnownLatitude,
@@ -271,16 +269,14 @@ function mergeSamsaraDrivers(drivers: Driver[], samsaraDrivers: SamsaraDriverIte
       continue;
     }
 
+    // Existing driver — only update Samsara link, not user-managed fields (name, status, pay, etc.)
     const existing = nextDrivers[existingIndex];
     nextDrivers[existingIndex] = {
       ...existing,
-      name: item.name || existing.name,
-      status,
       externalSource: "samsara",
       externalId: item.id,
       username: item.username || existing.username,
       timezone: item.timezone || existing.timezone,
-      hireDate: existing.hireDate || item.createdAtTime?.split("T")[0] || "",
       lastSyncedAt: now,
     };
     updatedCount += 1;
