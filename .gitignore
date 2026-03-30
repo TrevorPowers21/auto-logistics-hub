@@ -24,3 +24,4 @@ dist-ssr
 *.sw?
 .samsara.local
 server/data/*.json
+vite.config.ts.timestamp-*

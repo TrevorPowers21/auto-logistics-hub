@@ -13,6 +13,8 @@ import LoadsPage from "./pages/Loads.tsx";
 import ExpensesPage from "./pages/Expenses.tsx";
 import InvoicesPage from "./pages/Invoices.tsx";
 import VehiclesPage from "./pages/Vehicles.tsx";
+import PlanningBoardPage from "./pages/PlanningBoard.tsx";
+import FuelTrackingPage from "./pages/FuelTracking.tsx";
 import SettingsPage from "./pages/Settings.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
@@ -34,6 +36,8 @@ const App = () => (
           <Route path="/expenses" element={<AppLayout><ExpensesPage /></AppLayout>} />
           <Route path="/invoices" element={<AppLayout><InvoicesPage /></AppLayout>} />
           <Route path="/vehicles" element={<AppLayout><VehiclesPage /></AppLayout>} />
+          <Route path="/planning" element={<AppLayout><PlanningBoardPage /></AppLayout>} />
+          <Route path="/fuel" element={<AppLayout><FuelTrackingPage /></AppLayout>} />
           <Route path="/settings" element={<AppLayout><SettingsPage /></AppLayout>} />
           <Route path="*" element={<NotFound />} />
         </Routes>

@@ -10,6 +10,10 @@ import { getSavedSamsaraToken, saveSamsaraToken } from "@/lib/samsara";
 const integrations = [
   { name: "Samsara", status: "Active", description: "Fleet GPS tracking and driver sync. Configure the API token above." },
   { name: "NHTSA VIN Decoder", status: "Active", description: "Public API for decoding VINs. No token required — used automatically in Fleet and Cars." },
+  { name: "VehicleHaul", status: "Pending", description: "Primary dispatch software. No public API found — contact VehicleHaul at (888) 456-4777 to request API/export access." },
+  { name: "QuickBooks", status: "Not Needed", description: "Invoicing flows VehicleHaul to QuickBooks automatically. Managed by bookkeeper — no app integration needed." },
+  { name: "Fleet One", status: "Future", description: "Fuel card data (driver, location, gallons, cost). Daily email parse integration planned." },
+  { name: "Central Dispatch", status: "Research", description: "No integration planned — fraud/security concerns in the industry. Flagged for future research only." },
 ];
 
 export default function SettingsPage() {
@@ -107,9 +111,10 @@ export default function SettingsPage() {
               <div className="flex items-center justify-between gap-3">
                 <p className="font-medium">{integration.name}</p>
                 <span className={`rounded-full px-3 py-1 text-xs font-medium ${
-                  integration.status === "Active"
-                    ? "bg-emerald-100 text-emerald-700"
-                    : "bg-muted text-muted-foreground"
+                  integration.status === "Active" ? "bg-emerald-100 text-emerald-700"
+                  : integration.status === "Pending" ? "bg-amber-100 text-amber-700"
+                  : integration.status === "Future" ? "bg-blue-100 text-blue-700"
+                  : "bg-muted text-muted-foreground"
                 }`}>
                   {integration.status}
                 </span>

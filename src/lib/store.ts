@@ -1,7 +1,7 @@
-import { Car, DispatchCodeDefinition, Driver, DriverBoardEntry, DriverDailyUpdate, Load, Expense, Invoice, LocationProfile, Vehicle } from "./types";
+import { Car, DispatchCodeDefinition, Driver, DriverBoardEntry, DriverDailyUpdate, FuelEntry, Load, Expense, Invoice, LocationProfile, PlanningSlot, Vehicle } from "./types";
 
 // Simple localStorage-backed store with event emitter for reactivity
-type StoreKey = "cars" | "drivers" | "driverUpdates" | "driverBoards" | "dispatchCodes" | "locations" | "loads" | "expenses" | "invoices" | "vehicles";
+type StoreKey = "cars" | "drivers" | "driverUpdates" | "driverBoards" | "dispatchCodes" | "locations" | "loads" | "expenses" | "invoices" | "vehicles" | "fuelEntries" | "planningSlots";
 
 const DEFAULTS: Record<StoreKey, unknown[]> = {
   cars: [
@@ -33,7 +33,7 @@ const DEFAULTS: Record<StoreKey, unknown[]> = {
       items: ["9-SBT", "8-SECOR"],
       stops: [
         { id: "b1s1", carCount: 9, pickupLocation: "SBT", dropoffLocation: "RK TAVERN", status: "completed", notes: "Morning route closed out the same day." },
-        { id: "b1s2", carCount: 8, pickupLocation: "SECOR", dropoffLocation: "SHOP KEL", status: "held_overnight", overnightLocation: "SHOP KEL", notes: "Held in shop for next-day dispatch." },
+        { id: "b1s2", carCount: 8, pickupLocation: "SECOR", dropoffLocation: "SHOP KEL", status: "overnight", overnightLocation: "SHOP KEL", notes: "Held in shop for next-day dispatch." },
       ],
       updatedAt: "2026-03-19T18:20:00.000Z",
     },
@@ -44,7 +44,7 @@ const DEFAULTS: Record<StoreKey, unknown[]> = {
       items: ["9-NBG", "9-DAG"],
       stops: [
         { id: "b2s1", carCount: 9, pickupLocation: "NBG", dropoffLocation: "FAMILY", status: "completed", notes: "Ford/Enfield run completed." },
-        { id: "b2s2", carCount: 9, pickupLocation: "DAG", dropoffLocation: "SASI", status: "held_overnight", overnightLocation: "SHOP", notes: "Remaining cars held overnight at the shop." },
+        { id: "b2s2", carCount: 9, pickupLocation: "DAG", dropoffLocation: "SASI", status: "overnight", overnightLocation: "SHOP", notes: "Remaining cars held overnight at the shop." },
       ],
       updatedAt: "2026-03-19T17:45:00.000Z",
     },
@@ -65,7 +65,7 @@ const DEFAULTS: Record<StoreKey, unknown[]> = {
       date: "2026-03-19",
       items: ["1-CURRY"],
       stops: [
-        { id: "b4s1", carCount: 1, pickupLocation: "CURRY", dropoffLocation: "SUBARU", status: "held_overnight", overnightLocation: "SHOP", notes: "Vehicle staged for delivery the next morning." },
+        { id: "b4s1", carCount: 1, pickupLocation: "CURRY", dropoffLocation: "SUBARU", status: "overnight", overnightLocation: "SHOP", notes: "Vehicle staged for delivery the next morning." },
       ],
       updatedAt: "2026-03-19T13:00:00.000Z",
     },
@@ -119,6 +119,8 @@ const DEFAULTS: Record<StoreKey, unknown[]> = {
     { id: "inv4", invoiceNumber: "INV-2026-0074", loadId: "l1", customer: "Greenfield Motors", amount: 2850, status: "draft", issuedDate: "2026-03-20", dueDate: "2026-04-04" },
     { id: "inv5", invoiceNumber: "INV-2026-0075", loadId: "l2", customer: "Apex Auto Group", amount: 3400, status: "draft", issuedDate: "2026-03-20", dueDate: "2026-04-04" },
   ] as Invoice[],
+  fuelEntries: [] as FuelEntry[],
+  planningSlots: [] as PlanningSlot[],
   vehicles: [
     {
       id: "v1",
@@ -235,6 +237,8 @@ export function getLoads(): Load[] { return getStore<Load>("loads"); }
 export function getExpenses(): Expense[] { return getStore<Expense>("expenses"); }
 export function getInvoices(): Invoice[] { return getStore<Invoice>("invoices"); }
 export function getVehicles(): Vehicle[] { return getStore<Vehicle>("vehicles"); }
+export function getFuelEntries(): FuelEntry[] { return getStore<FuelEntry>("fuelEntries"); }
+export function getPlanningSlots(): PlanningSlot[] { return getStore<PlanningSlot>("planningSlots"); }
 
 export function saveDrivers(d: Driver[]) { setStore("drivers", d); }
 export function saveCars(d: Car[]) { setStore("cars", d); }
@@ -246,6 +250,8 @@ export function saveLoads(d: Load[]) { setStore("loads", d); }
 export function saveExpenses(d: Expense[]) { setStore("expenses", d); }
 export function saveInvoices(d: Invoice[]) { setStore("invoices", d); }
 export function saveVehicles(d: Vehicle[]) { setStore("vehicles", d); }
+export function saveFuelEntries(d: FuelEntry[]) { setStore("fuelEntries", d); }
+export function savePlanningSlots(d: PlanningSlot[]) { setStore("planningSlots", d); }
 
 export function getAppSetting(key: string): string | null {
   try {

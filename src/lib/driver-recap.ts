@@ -31,7 +31,9 @@ export interface DriverRecapRow {
 export interface BoardTotals {
   totalCars: number;
   completedCars: number;
-  heldCars: number;
+  overnightCars: number;  // same driver, held at yard between legs
+  splitCars: number;      // different drivers handle pickup/delivery
+  heldCars: number;       // overnight + split combined (convenience)
   totalPay: number | null; // null when no pay rates are set
 }
 
@@ -212,12 +214,17 @@ export function getBoardTotals(stops: DriverBoardStop[], driverDefaultRate?: num
       totals.totalCars += stop.carCount;
       if (stop.status === "completed") {
         totals.completedCars += stop.carCount;
+      } else if (stop.status === "split") {
+        totals.splitCars += stop.carCount;
+        totals.heldCars += stop.carCount;
       } else {
+        // overnight (or legacy held_overnight)
+        totals.overnightCars += stop.carCount;
         totals.heldCars += stop.carCount;
       }
       return totals;
     },
-    { totalCars: 0, completedCars: 0, heldCars: 0 },
+    { totalCars: 0, completedCars: 0, overnightCars: 0, splitCars: 0, heldCars: 0 },
   );
 
   return { ...base, totalPay: getBoardPayTotal(stops, driverDefaultRate) };
@@ -233,8 +240,10 @@ export function formatStopSummary(stop: DriverBoardStop, definitions: DispatchCo
     `DO: ${dropoffMeaning || stop.dropoffLocation}`,
   ];
 
-  if (stop.status === "held_overnight") {
-    route.push(`Split at ${overnightMeaning || stop.overnightLocation || "shop"}`);
+  if (stop.status === "overnight") {
+    route.push(`Overnight at ${overnightMeaning || stop.overnightLocation || "shop"}`);
+  } else if (stop.status === "split") {
+    route.push(`Split — ${stop.splitLeg === "delivery" ? "delivery leg" : "pickup leg"}`);
   } else {
     route.push("Completed");
   }
@@ -317,8 +326,9 @@ export function buildDailyExportText(
     lines.push("  " + "─".repeat(56));
 
     for (const stop of row.stops) {
-      const route = `${stop.pickupLocation} → ${stop.status === "held_overnight" ? (stop.overnightLocation || stop.dropoffLocation) : stop.dropoffLocation}`;
-      const statusStr = stop.status === "held_overnight" ? "Split    " : "Completed";
+      const endLoc = stop.status === "overnight" ? (stop.overnightLocation || stop.dropoffLocation) : stop.dropoffLocation;
+      const route = `${stop.pickupLocation} → ${endLoc}`;
+      const statusStr = stop.status === "completed" ? "Completed" : stop.status === "overnight" ? "Overnight" : "Split    ";
       const rateStr = stop.payRatePerCar !== undefined
         ? `$${stop.payRatePerCar}/car`
         : (row.driver.payRatePerCar !== undefined ? `$${row.driver.payRatePerCar}/car` : "");

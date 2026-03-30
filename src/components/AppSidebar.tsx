@@ -9,6 +9,8 @@ import {
   MapPinned,
   Car,
   Settings,
+  CalendarDays,
+  Fuel,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
@@ -27,11 +29,13 @@ import {
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Planning Board", url: "/planning", icon: CalendarDays },
   { title: "Driver Recap", url: "/driver-recap", icon: ClipboardList },
   { title: "Cars", url: "/cars", icon: Car },
   { title: "Loads", url: "/loads", icon: Truck },
   { title: "Invoices", url: "/invoices", icon: FileText },
   { title: "Expenses", url: "/expenses", icon: DollarSign },
+  { title: "Fuel", url: "/fuel", icon: Fuel },
   { title: "Customers", url: "/locations", icon: MapPinned },
   { title: "Drivers", url: "/drivers", icon: Users },
   { title: "Fleet", url: "/vehicles", icon: CarFront },

@@ -66,20 +66,21 @@ export default function CarsPage() {
         return matchStatus && matchSearch;
       })
       .sort((a, b) => {
-        // At-shop cars: sort by dwell time (longest first)
-        // Delivered: sort by delivered date desc
-        // In transit: by received date desc
+        // Primary sort: most recently delivered first (daily pay reconciliation)
+        // Cars with delivery dates surface at top; at-shop sorted by dwell time
+        const aDelivered = a.deliveredDate || "";
+        const bDelivered = b.deliveredDate || "";
+        if (aDelivered && bDelivered) return bDelivered.localeCompare(aDelivered);
+        if (aDelivered && !bDelivered) return -1;
+        if (!aDelivered && bDelivered) return 1;
+        // Neither delivered — sort at-shop by dwell time desc, then in-transit by received desc
         const aStatus = a.status || "at_shop";
         const bStatus = b.status || "at_shop";
-        if (aStatus === "at_shop" && bStatus === "at_shop") {
-          const aDwell = getDwellDays(a) ?? 0;
-          const bDwell = getDwellDays(b) ?? 0;
-          return bDwell - aDwell;
-        }
         if (aStatus === bStatus) {
-          const aDate = a.deliveredDate || a.receivedDate || "";
-          const bDate = b.deliveredDate || b.receivedDate || "";
-          return bDate.localeCompare(aDate);
+          if (aStatus === "at_shop") {
+            return (getDwellDays(b) ?? 0) - (getDwellDays(a) ?? 0);
+          }
+          return (b.receivedDate || "").localeCompare(a.receivedDate || "");
         }
         const order: Record<CarStatus, number> = { at_shop: 0, in_transit: 1, delivered: 2 };
         return order[aStatus] - order[bStatus];
@@ -288,7 +289,7 @@ export default function CarsPage() {
         </div>
         <div className="relative max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search VIN, make, model..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+          <Input placeholder="Search by VIN (partial ok), make, model..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
         </div>
       </div>
 
@@ -330,6 +331,7 @@ export default function CarsPage() {
                   <TableHead>Status</TableHead>
                   <TableHead>Pickup From</TableHead>
                   <TableHead>Delivered To</TableHead>
+                  <TableHead>Delivered</TableHead>
                   <TableHead>Driver</TableHead>
                   <TableHead className="text-right">Dwell</TableHead>
                 </TableRow>
@@ -363,6 +365,7 @@ export default function CarsPage() {
                       </TableCell>
                       <TableCell className="text-sm">{car.pickupLocation || "—"}</TableCell>
                       <TableCell className="text-sm">{car.deliveryLocation || "—"}</TableCell>
+                      <TableCell className="text-sm tabular-nums">{car.deliveredDate || "—"}</TableCell>
                       <TableCell className="text-sm">{driver?.name || "—"}</TableCell>
                       <TableCell className="text-right">
                         {dwell !== null ? (

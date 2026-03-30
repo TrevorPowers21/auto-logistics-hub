@@ -471,18 +471,20 @@ function DriverLoadTable({
                       <TableCell className="tabular-nums font-medium">{stop.carCount}</TableCell>
                       <TableCell className="text-sm">{stop.pickupLocation || "—"}</TableCell>
                       <TableCell className="text-sm">
-                        {stop.status === "held_overnight"
-                          ? <span>{stop.overnightLocation || stop.dropoffLocation || "—"} <Badge variant="secondary" className="bg-amber-100 text-amber-700 text-xs ml-1">Split</Badge></span>
-                          : stop.dropoffLocation || "—"}
+                        {stop.status !== "completed"
+                          ? <span>{stop.overnightLocation || stop.dropoffLocation || "—"}</span>
+                          : (stop.dropoffLocation || "—")}
                       </TableCell>
                       <TableCell>
                         <Badge
                           variant="secondary"
-                          className={stop.status === "completed"
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-amber-100 text-amber-700"}
+                          className={
+                            stop.status === "completed" ? "bg-emerald-100 text-emerald-700"
+                            : stop.status === "split" ? "bg-purple-100 text-purple-700"
+                            : "bg-amber-100 text-amber-700"
+                          }
                         >
-                          {stop.status === "completed" ? "Done" : "Split"}
+                          {stop.status === "completed" ? "Done" : stop.status === "split" ? "Split" : "Overnight"}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right tabular-nums text-sm">
@@ -576,7 +578,8 @@ function DriverLoadTable({
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="completed">Completed</SelectItem>
-                          <SelectItem value="held_overnight">Split (held overnight)</SelectItem>
+                          <SelectItem value="overnight">Overnight (same driver, held at yard)</SelectItem>
+                          <SelectItem value="split">Split (different drivers per leg)</SelectItem>
                         </SelectContent>
                       </Select>
                     </Field>
@@ -601,19 +604,34 @@ function DriverLoadTable({
                       />
                     </Field>
 
-                    {stop.status === "held_overnight" && (
-                      <Field label="Split / Overnight Location">
+                    {(stop.status === "overnight" || stop.status === "split") && (
+                      <Field label={stop.status === "overnight" ? "Yard / Overnight Location" : "Handoff Location"}>
                         <SearchableLocationSelect
                           value={stop.overnightLocation || ""}
                           options={locationOptions}
-                          placeholder="Where are they being held?"
+                          placeholder={stop.status === "overnight" ? "Where held overnight?" : "Where is the handoff?"}
                           onCreateLocation={onCreateLocation}
                           onValueChange={(v) => updateStop(index, { overnightLocation: v })}
                         />
                       </Field>
                     )}
 
-                    <div className={stop.status === "held_overnight" ? "md:col-span-2" : ""}>
+                    {stop.status === "split" && (
+                      <Field label="This driver's leg">
+                        <Select
+                          value={stop.splitLeg || "pickup"}
+                          onValueChange={(v) => updateStop(index, { splitLeg: v as "pickup" | "delivery" })}
+                        >
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="pickup">Pickup leg</SelectItem>
+                            <SelectItem value="delivery">Delivery leg</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </Field>
+                    )}
+
+                    <div className={stop.status !== "completed" ? "md:col-span-2" : ""}>
                       <Field label="Notes / Issues">
                         <Textarea
                           value={stop.notes || ""}
@@ -651,7 +669,7 @@ function buildLocationRecap(rows: DriverSheetRow[], type: "pickup" | "dropoff"):
     for (const stop of row.stops) {
       const loc = type === "pickup"
         ? stop.pickupLocation
-        : (stop.status === "held_overnight"
+        : (stop.status !== "completed"
             ? (stop.overnightLocation || stop.dropoffLocation)
             : stop.dropoffLocation);
       if (!loc) continue;

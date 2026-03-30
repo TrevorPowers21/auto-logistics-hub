@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { getDrivers, saveDrivers, generateId, getVehicles } from "@/lib/store";
 import { useStoreData } from "@/hooks/use-store";
 import { Driver, DriverStatus } from "@/lib/types";
+import { toast } from "@/components/ui/sonner";
 import { Plus, Search, Users } from "lucide-react";
 
 const statusBadge: Record<DriverStatus, string> = {
@@ -32,7 +33,10 @@ export default function DriversPage() {
   const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
   const [editStatus, setEditStatus] = useState<DriverStatus>("active");
 
-  const filtered = drivers.filter(
+  const activeDrivers = drivers.filter((d) => d.status !== "inactive");
+  const inactiveDrivers = drivers.filter((d) => d.status === "inactive");
+
+  const filtered = activeDrivers.filter(
     (d) =>
       d.name.toLowerCase().includes(search.toLowerCase()) ||
       d.phone.includes(search),
@@ -81,9 +85,10 @@ export default function DriversPage() {
     setEditingDriver(null);
   };
 
-  const handleDelete = (id: string) => {
-    saveDrivers(drivers.filter((d) => d.id !== id));
+  const handleMarkInactive = (id: string) => {
+    saveDrivers(drivers.map((d) => (d.id === id ? { ...d, status: "inactive" as DriverStatus } : d)));
     setEditingDriver(null);
+    toast("Driver marked inactive", { description: "Driver has been moved to inactive status. Historical data is preserved." });
   };
 
   return (
@@ -186,13 +191,16 @@ export default function DriversPage() {
                 </div>
               </div>
               <div className="flex justify-between gap-3">
-                <Button
-                  type="button"
-                  variant="destructive"
-                  onClick={() => handleDelete(editingDriver.id)}
-                >
-                  Remove Driver
-                </Button>
+                {editingDriver.status !== "inactive" && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                    onClick={() => handleMarkInactive(editingDriver.id)}
+                  >
+                    Mark Inactive
+                  </Button>
+                )}
                 <Button type="submit">Save Changes</Button>
               </div>
             </form>
@@ -269,6 +277,45 @@ export default function DriversPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Inactive drivers */}
+      {inactiveDrivers.length > 0 && (
+        <details className="group">
+          <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground transition-colors list-none flex items-center gap-2">
+            <span className="text-xs">&#9654;</span>
+            <span className="group-open:hidden">Show {inactiveDrivers.length} inactive driver{inactiveDrivers.length === 1 ? "" : "s"}</span>
+            <span className="hidden group-open:inline">Hide inactive drivers</span>
+          </summary>
+          <Card className="mt-3 opacity-70">
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Phone</TableHead>
+                    <TableHead>Miles</TableHead>
+                    <TableHead>Earnings</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {inactiveDrivers.map((d) => (
+                    <TableRow key={d.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleEditOpen(d)}>
+                      <TableCell className="font-medium">{d.name}</TableCell>
+                      <TableCell className="text-sm">{d.phone}</TableCell>
+                      <TableCell className="tabular-nums">{d.totalMiles.toLocaleString()}</TableCell>
+                      <TableCell className="tabular-nums">${d.totalEarnings.toLocaleString()}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="bg-gray-100 text-gray-600">Inactive</Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </details>
+      )}
     </div>
   );
 }

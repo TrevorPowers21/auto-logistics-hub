@@ -61,7 +61,10 @@ export interface LocationProfile {
   notes: string;
 }
 
-export type DispatchStopStatus = "completed" | "held_overnight";
+// "completed" = same driver picked up and delivered in one trip
+// "overnight" = same driver picks up and delivers, but stops at yard/shop between legs
+// "split" = one driver picks up, a different driver delivers
+export type DispatchStopStatus = "completed" | "overnight" | "split";
 
 export interface DriverBoardStop {
   id: string;
@@ -72,7 +75,10 @@ export interface DriverBoardStop {
   overnightLocation?: string;
   notes?: string;
   carId?: string;
-  payRatePerCar?: number; // pay per car for this specific stop
+  payRatePerCar?: number; // pay per car for this specific stop/leg
+  // Split-specific: which driver handles the other leg
+  splitDriverId?: string;
+  splitLeg?: "pickup" | "delivery"; // which leg THIS driver is doing
 }
 
 export type CarStatus = "at_shop" | "in_transit" | "delivered";
@@ -114,6 +120,8 @@ export interface Load {
   notes: string;
 }
 
+export type BusinessLine = "auto_transport" | "auto_sales" | "towing";
+
 export type ExpenseCategory = "fuel" | "maintenance" | "tolls" | "insurance" | "misc";
 
 export interface Expense {
@@ -124,6 +132,8 @@ export interface Expense {
   description: string;
   driverId?: string;
   vehicleId?: string;
+  businessLine?: BusinessLine;       // which business line this expense belongs to
+  salesCarId?: string;               // if auto_sales, which car this expense is for
 }
 
 export type InvoiceStatus = "draft" | "sent" | "paid" | "overdue";
@@ -169,4 +179,31 @@ export interface FleetMaintenanceEntry {
   type: string;
   mileage: number;
   details: string;
+}
+
+// Fuel tracking — yard gallons
+export interface FuelEntry {
+  id: string;
+  date: string;
+  gallons: number;
+  costPerGallon: number;
+  totalCost: number;
+  source: "yard" | "fleet_one";      // yard = Hudson View Oil manual, fleet_one = future
+  driverId?: string;
+  vehicleId?: string;
+  location?: string;
+  notes?: string;
+}
+
+// 3-Day Planning Board
+export interface PlanningSlot {
+  id: string;
+  date: string;
+  driverId?: string;           // can be blank — load entered before driver assigned
+  loadSummary: string;         // free-text load description
+  pickupLocation?: string;
+  deliveryLocation?: string;
+  carCount?: number;
+  confirmed: boolean;          // false = tentative, true = locked in
+  notes?: string;
 }
