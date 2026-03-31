@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Eye, EyeOff, KeyRound, PlugZap, Save } from "lucide-react";
+import { Eye, EyeOff, KeyRound, PlugZap, Save, Upload } from "lucide-react";
+import { mergeImportedCustomers } from "@/data/customer-import";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -122,6 +123,37 @@ export default function SettingsPage() {
               <p className="mt-2 text-sm text-muted-foreground">{integration.description}</p>
             </div>
           ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Upload className="h-5 w-5" />
+            Data Import
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="rounded-xl border p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="font-medium">VehicleHaul Customers</p>
+                <p className="mt-1 text-sm text-muted-foreground">Import customer list from VehicleHaul CSV export. Merges with existing — won't overwrite.</p>
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const count = mergeImportedCustomers();
+                  toast(count > 0 ? `Imported ${count} customers` : "All customers already imported", {
+                    description: count > 0 ? "Customer list updated." : "No new customers to add.",
+                  });
+                }}
+              >
+                <Upload className="mr-2 h-4 w-4" />
+                Import
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>
