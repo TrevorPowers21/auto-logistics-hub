@@ -83,40 +83,31 @@ export interface SamsaraFleetSyncResult {
   endCursor?: string;
 }
 
-interface LocalSamsaraSyncResponse {
-  vehicleDirectory: SamsaraVehicleDirectoryResponse;
-  vehicleFeed: SamsaraVehicleStatsFeedResponse;
-  drivers: SamsaraDriverItem[];
-}
+const SAMSARA_TOKEN_KEY = "transport_setting_samsara_token";
 
 export async function getSavedSamsaraToken() {
-  const response = await fetch("/api/samsara/token");
-
-  if (!response.ok) {
-    throw new Error("Failed to read saved Samsara token");
-  }
-
-  const data = await response.json() as { token?: string };
-  return data.token || "";
+  return localStorage.getItem(SAMSARA_TOKEN_KEY) || "";
 }
 
 export async function saveSamsaraToken(token: string) {
-  const response = await fetch("/api/samsara/token", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ token }),
-  });
-
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({ error: "Failed to save Samsara token" }));
-    throw new Error(data.error || "Failed to save Samsara token");
-  }
+  localStorage.setItem(SAMSARA_TOKEN_KEY, token.trim());
 }
 
 export function isSamsaraConfigured(token?: string | null) {
   return Boolean(token);
+}
+
+const SAMSARA_API_BASE = "https://api.samsara.com";
+
+async function samsaraFetch<T>(path: string, token: string): Promise<T> {
+  const res = await fetch(`${SAMSARA_API_BASE}${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { message?: string }).message || `Samsara API error: ${res.status}`);
+  }
+  return res.json() as Promise<T>;
 }
 
 export async function syncSamsaraFleetData(
@@ -124,23 +115,21 @@ export async function syncSamsaraFleetData(
   currentDrivers: Driver[],
   after?: string,
 ): Promise<SamsaraFleetSyncResult> {
-  const response = await fetch("/api/samsara/sync", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ cursor: after || undefined }),
-  });
+  const token = await getSavedSamsaraToken();
+  if (!token) throw new Error("No Samsara token configured");
 
-  const payload = await response.json().catch(() => ({}));
+  // Fetch vehicle directory, stats feed, and drivers in parallel
+  const statTypes = DEFAULT_STAT_TYPES.join(",");
+  const cursorParam = after ? `&after=${after}` : "";
 
-  if (!response.ok) {
-    throw new Error(payload.error || "Failed to sync Samsara data");
-  }
+  const [directory, feed, driversRes] = await Promise.all([
+    samsaraFetch<SamsaraVehicleDirectoryResponse>("/fleet/vehicles", token),
+    samsaraFetch<SamsaraVehicleStatsFeedResponse>(`/fleet/vehicles/stats/feed?types=${statTypes}${cursorParam}`, token),
+    samsaraFetch<SamsaraDriversResponse>("/fleet/drivers", token),
+  ]);
 
-  const data = payload as LocalSamsaraSyncResponse;
-  const mergedVehicles = await mergeSamsaraVehicles(currentVehicles, data.vehicleDirectory.data, data.vehicleFeed);
-  const mergedDrivers = mergeSamsaraDrivers(currentDrivers, data.drivers);
+  const mergedVehicles = await mergeSamsaraVehicles(currentVehicles, directory.data, feed);
+  const mergedDrivers = mergeSamsaraDrivers(currentDrivers, driversRes.data);
 
   return {
     vehicles: mergedVehicles.vehicles,
@@ -149,7 +138,7 @@ export async function syncSamsaraFleetData(
     updatedVehicleCount: mergedVehicles.updatedCount,
     importedDriverCount: mergedDrivers.importedCount,
     updatedDriverCount: mergedDrivers.updatedCount,
-    endCursor: data.vehicleFeed.pagination?.endCursor,
+    endCursor: feed.pagination?.endCursor,
   };
 }
 

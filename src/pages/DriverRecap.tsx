@@ -34,17 +34,26 @@ import {
   sanitizeBoardStops,
   formatRecapHeadingShort,
 } from "@/lib/driver-recap";
-import { generateId, getLocations, getDriverBoards, getDrivers, saveDriverBoards, saveLocations } from "@/lib/store";
-import { Driver, DriverBoardEntry, DriverBoardStop, LocationProfile } from "@/lib/types";
+import { generateId, getLocations, getDriverBoards, getDrivers, getPlanningSlots, saveDriverBoards, saveLocations } from "@/lib/store";
+import { Driver, DriverBoardEntry, DriverBoardStop, LocationProfile, PlanningSlot } from "@/lib/types";
 import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, Download, Plus, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { addDays, format, startOfWeek, addWeeks } from "date-fns";
+
+type CarriedOverStop = {
+  carCount: number;
+  pickupLocation: string; // "SHOP" since they were held overnight
+  dropoffLocation: string; // where they need to go today
+  fromDate: string;
+};
 
 type DriverSheetRow = {
   id: string;
   driver: Driver;
   board?: DriverBoardEntry;
   stops: DriverBoardStop[];
+  carriedOver: CarriedOverStop[]; // overnight holds from previous day
+  fromPlanning: boolean; // true if stops came from Planning Board (not yet saved)
   totalCars: number;
   completedCars: number;
   heldCars: number;
@@ -59,6 +68,7 @@ type LocationTotal = {
 export default function DriverRecapPage() {
   const drivers = useStoreData(getDrivers);
   const boards = useStoreData(getDriverBoards);
+  const planningSlots = useStoreData(getPlanningSlots);
   const locations = useStoreData(getLocations);
   const [date, setDate] = useState(getYesterdayDate);
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -70,14 +80,110 @@ export default function DriverRecapPage() {
     [drivers],
   );
 
+  // Get previous day for carryover check
+  const prevDate = useMemo(() => {
+    const d = new Date(`${date}T12:00:00`);
+    d.setDate(d.getDate() - 1);
+    return format(d, "yyyy-MM-dd");
+  }, [date]);
+
+  // Convert planning slots into board stops when no board entry exists
+  const planningStopsForDriver = (driverId: string, forDate: string): DriverBoardStop[] => {
+    const driverSlots = planningSlots.filter((s) => s.driverId === driverId && s.date === forDate);
+    if (driverSlots.length === 0) return [];
+    return driverSlots.map((slot) => ({
+      id: `plan-${slot.id}`,
+      carCount: slot.carCount || 0,
+      pickupLocation: slot.pickupLocation || "",
+      dropoffLocation: slot.deliveryLocation || "",
+      status: "completed" as const,
+      notes: slot.notes || "",
+    }));
+  };
+
+  // Auto-save: if a driver has planning data but no board entry, save it immediately
+  // so Susan can review without anyone needing to manually hit save
+  const autoSavedRef = useMemo(() => new Set<string>(), []);
+
   const driverRows = useMemo<DriverSheetRow[]>(() => {
-    return activeDrivers.map((driver) => {
+    const boardsToAutoSave: DriverBoardEntry[] = [];
+
+    const rows = activeDrivers.map((driver) => {
       const board = boards.find((e) => e.driverId === driver.id && e.date === date);
-      const stops = normalizeBoardStops(board);
+
+      // If no board entry, check for planning data or carryovers to auto-save
+      let stops: DriverBoardStop[];
+      let fromPlanning = false;
+
+      if (board) {
+        stops = normalizeBoardStops(board);
+      } else {
+        const planStops = planningStopsForDriver(driver.id, date);
+
+        // Also check previous day for overnight carryovers to include
+        const prevBoard = boards.find((e) => e.driverId === driver.id && e.date === prevDate);
+        const prevStops = normalizeBoardStops(prevBoard);
+        const carryoverStops: DriverBoardStop[] = prevStops
+          .filter((s) => s.status === "overnight")
+          .map((s) => ({
+            id: `carry-${s.id}`,
+            carCount: s.carCount,
+            pickupLocation: "SHOP",
+            dropoffLocation: s.dropoffLocation || "",
+            status: "completed" as const,
+            notes: "Carryover from yesterday",
+          }));
+
+        stops = [...carryoverStops, ...planStops];
+        fromPlanning = stops.length > 0;
+
+        // Auto-save so it's persisted without manual intervention
+        const autoKey = `${driver.id}-${date}`;
+        if (stops.length > 0 && !autoSavedRef.has(autoKey)) {
+          autoSavedRef.add(autoKey);
+          boardsToAutoSave.push({
+            id: generateId(),
+            driverId: driver.id,
+            date,
+            items: stops.map((s) => `${s.carCount}-${s.pickupLocation}`),
+            stops,
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      }
+
       const totals = getBoardTotals(stops, driver.payRatePerCar);
-      return { id: driver.id, driver, board, stops, ...totals };
+
+      // Carryover display (separate from the auto-saved stops above)
+      const prevBoard = boards.find((e) => e.driverId === driver.id && e.date === prevDate);
+      const prevStops = normalizeBoardStops(prevBoard);
+      const carriedOver: CarriedOverStop[] = prevStops
+        .filter((s) => s.status === "overnight")
+        .map((s) => ({
+          carCount: s.carCount,
+          pickupLocation: "SHOP",
+          dropoffLocation: s.dropoffLocation || "",
+          fromDate: prevDate,
+        }));
+
+      return { id: driver.id, driver, board, stops, carriedOver, fromPlanning, ...totals };
     });
-  }, [boards, date, activeDrivers]);
+
+    // Batch auto-save outside render
+    if (boardsToAutoSave.length > 0) {
+      setTimeout(() => {
+        const current = getDriverBoards();
+        const newBoards = boardsToAutoSave.filter(
+          (b) => !current.some((c) => c.driverId === b.driverId && c.date === b.date),
+        );
+        if (newBoards.length > 0) {
+          saveDriverBoards([...current, ...newBoards]);
+        }
+      }, 0);
+    }
+
+    return rows;
+  }, [boards, planningSlots, date, prevDate, activeDrivers]);
 
   const pickupRecap = useMemo(() => buildLocationRecap(driverRows, "pickup"), [driverRows]);
   const dropoffRecap = useMemo(() => buildLocationRecap(driverRows, "dropoff"), [driverRows]);
@@ -408,22 +514,31 @@ function DriverLoadTable({
   onCreateLocation: (value: string) => string;
   onSave: (driverId: string, stops: DriverBoardStop[]) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [editingStopIndex, setEditingStopIndex] = useState<number | null>(null);
   const [stops, setStops] = useState<DriverBoardStop[]>([]);
 
   useEffect(() => {
-    setStops(row.stops.length > 0 ? row.stops : [createEmptyStop()]);
+    setStops(row.stops.length > 0 ? row.stops : []);
   }, [row.stops]);
 
   const updateStop = (index: number, patch: Partial<DriverBoardStop>) => {
-    setStops((current) => current.map((stop, i) => i === index ? { ...stop, ...patch } : stop));
+    const updated = stops.map((stop, i) => i === index ? { ...stop, ...patch } : stop);
+    setStops(updated);
+    onSave(row.id, updated); // auto-save on every change
   };
 
-  const addStop = () => setStops((current) => [...current, createEmptyStop()]);
-  const removeStop = (index: number) =>
-    setStops((current) => current.length === 1 ? current : current.filter((_, i) => i !== index));
+  const addStop = () => {
+    const updated = [...stops, createEmptyStop()];
+    setStops(updated);
+    setEditingStopIndex(updated.length - 1); // open the new stop for editing
+  };
 
-  const handleSave = () => { onSave(row.id, stops); setOpen(false); };
+  const removeStop = (index: number) => {
+    const updated = stops.filter((_, i) => i !== index);
+    setStops(updated);
+    setEditingStopIndex(null);
+    onSave(row.id, updated);
+  };
 
   const payRate = row.driver.payRatePerCar;
 
@@ -433,11 +548,17 @@ function DriverLoadTable({
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <CardTitle className="text-base">{row.driver.name}</CardTitle>
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-base">{row.driver.name}</CardTitle>
+                {row.fromPlanning && (
+                  <Badge variant="secondary" className="bg-blue-100 text-blue-700 text-[10px]">From Plan</Badge>
+                )}
+              </div>
               <CardDescription className="mt-0.5">
                 {row.totalCars} cars
                 {row.completedCars > 0 && ` · ${row.completedCars} completed`}
                 {row.heldCars > 0 && ` · ${row.heldCars} split`}
+                {row.fromPlanning && " · edit & save to confirm"}
               </CardDescription>
             </div>
             {row.totalPay !== null ? (
@@ -452,209 +573,189 @@ function DriverLoadTable({
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="overflow-x-auto">
-            <Table className="min-w-[560px]">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-16">Cars</TableHead>
-                  <TableHead>Pickup</TableHead>
-                  <TableHead>Dropoff</TableHead>
-                  <TableHead className="w-24">Status</TableHead>
-                  <TableHead className="w-20 text-right">Pay</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {row.stops.length > 0 ? row.stops.map((stop) => {
-                  const stopPay = getStopPay(stop, payRate);
-                  return (
-                    <TableRow key={stop.id}>
-                      <TableCell className="tabular-nums font-medium">{stop.carCount}</TableCell>
-                      <TableCell className="text-sm">{stop.pickupLocation || "—"}</TableCell>
-                      <TableCell className="text-sm">
-                        {stop.status !== "completed"
-                          ? <span>{stop.overnightLocation || stop.dropoffLocation || "—"}</span>
-                          : (stop.dropoffLocation || "—")}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="secondary"
-                          className={
-                            stop.status === "completed" ? "bg-emerald-100 text-emerald-700"
-                            : stop.status === "split" ? "bg-purple-100 text-purple-700"
-                            : "bg-amber-100 text-amber-700"
-                          }
-                        >
-                          {stop.status === "completed" ? "Done" : stop.status === "split" ? "Split" : "Overnight"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums text-sm">
-                        {stopPay !== null
-                          ? `$${stopPay.toLocaleString("en-US", { minimumFractionDigits: 2 })}`
-                          : "—"}
-                      </TableCell>
-                    </TableRow>
-                  );
-                }) : (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-6">
-                      No loads entered for this driver.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+          {/* Carried-over overnight loads from previous day */}
+          {row.carriedOver.length > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50/50 px-3 py-2 space-y-1">
+              <p className="text-xs font-medium text-amber-800 uppercase tracking-wider">From yesterday — held overnight</p>
+              {row.carriedOver.map((co, i) => (
+                <div key={i} className="flex items-center justify-between text-sm">
+                  <span className="text-amber-900">
+                    {co.carCount} car{co.carCount === 1 ? "" : "s"} at SHOP → {co.dropoffLocation || "TBD"}
+                  </span>
+                  <Badge variant="secondary" className="bg-amber-100 text-amber-700 text-xs">Carryover</Badge>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Clickable stop rows */}
+          <div className="space-y-1.5">
+            {stops.length > 0 ? stops.map((stop, index) => {
+              const stopPay = getStopPay(stop, payRate);
+              return (
+                <div
+                  key={stop.id}
+                  className="flex items-center gap-3 rounded-lg border px-3 py-2.5 cursor-pointer hover:bg-muted/40 transition-colors"
+                  onClick={() => setEditingStopIndex(index)}
+                >
+                  <span className="tabular-nums font-bold text-sm w-6 text-center">{stop.carCount}</span>
+                  <div className="flex-1 min-w-0 text-sm">
+                    <span>{stop.pickupLocation || "?"}</span>
+                    <span className="text-muted-foreground mx-1">→</span>
+                    <span>{stop.dropoffLocation || "?"}</span>
+                  </div>
+                  <Badge
+                    variant="secondary"
+                    className={`text-[10px] shrink-0 ${
+                      stop.status === "completed" ? "bg-emerald-100 text-emerald-700"
+                      : stop.status === "split" ? "bg-purple-100 text-purple-700"
+                      : "bg-amber-100 text-amber-700"
+                    }`}
+                  >
+                    {stop.status === "completed" ? "Done" : stop.status === "split" ? "Split" : "O/N"}
+                  </Badge>
+                  {stopPay !== null && (
+                    <span className="tabular-nums text-xs font-medium text-emerald-700 shrink-0">
+                      ${stopPay.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                    </span>
+                  )}
+                </div>
+              );
+            }) : (
+              <p className="text-sm text-muted-foreground text-center py-4">No loads entered.</p>
+            )}
           </div>
-          <div className="flex justify-end">
-            <Button size="sm" onClick={() => setOpen(true)}>Edit Loads</Button>
-          </div>
+
+          <Button variant="outline" size="sm" className="w-full" onClick={addStop}>
+            <Plus className="h-3.5 w-3.5 mr-1" /> Add Load
+          </Button>
         </CardContent>
       </Card>
 
-      {/* Edit dialog */}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-4xl">
+      {/* Individual stop edit dialog */}
+      <Dialog open={editingStopIndex !== null} onOpenChange={(o) => !o && setEditingStopIndex(null)}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>
-              {row.driver.name} — Loads
-              {row.driver.payRatePerCar !== undefined && (
+              {row.driver.name} — Load {editingStopIndex !== null ? editingStopIndex + 1 : ""}
+              {payRate !== undefined && (
                 <span className="ml-2 text-sm font-normal text-muted-foreground">
-                  Default rate: ${row.driver.payRatePerCar}/car
+                  Default: ${payRate}/car
                 </span>
               )}
             </DialogTitle>
           </DialogHeader>
-
-          <div className="max-h-[65vh] space-y-4 overflow-y-auto pr-1">
-            {stops.map((stop, index) => {
-              const stopPay = getStopPay(stop, payRate);
-              return (
-                <div key={stop.id} className="rounded-lg border p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <p className="text-sm font-semibold">Load {index + 1}</p>
-                      {stopPay !== null && (
-                        <Badge variant="secondary" className="bg-emerald-100 text-emerald-700">
-                          ${stopPay.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                        </Badge>
-                      )}
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={() => removeStop(index)}>
-                      Remove
-                    </Button>
+          {editingStopIndex !== null && stops[editingStopIndex] && (() => {
+            const stop = stops[editingStopIndex];
+            const index = editingStopIndex;
+            const stopPay = getStopPay(stop, payRate);
+            return (
+              <div className="space-y-4">
+                {stopPay !== null && (
+                  <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm font-medium text-emerald-800 text-center">
+                    ${stopPay.toLocaleString("en-US", { minimumFractionDigits: 2 })} — {stop.carCount} cars × ${stop.payRatePerCar ?? payRate ?? 0}/car
                   </div>
+                )}
 
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <Field label="Number of Cars">
-                      <Input
-                        type="text"
-                        inputMode="numeric"
-                        value={String(stop.carCount)}
-                        onChange={(e) => updateStop(index, { carCount: Number(e.target.value.replace(/\D/g, "")) || 0 })}
-                        placeholder="0"
-                      />
-                    </Field>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Cars">
+                    <Input
+                      type="text"
+                      inputMode="numeric"
+                      value={String(stop.carCount)}
+                      onChange={(e) => updateStop(index, { carCount: Number(e.target.value.replace(/\D/g, "")) || 0 })}
+                      autoFocus
+                    />
+                  </Field>
 
-                    <Field label={`Pay Rate ($/car)${payRate !== undefined ? ` — default $${payRate}` : ""}`}>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={stop.payRatePerCar !== undefined ? String(stop.payRatePerCar) : ""}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          updateStop(index, {
-                            payRatePerCar: val === "" ? undefined : Number(val),
-                          });
-                        }}
-                        placeholder={payRate !== undefined ? `${payRate} (driver default)` : "Enter rate"}
-                      />
-                    </Field>
+                  <Field label={`Pay Rate ($/car)`}>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={stop.payRatePerCar !== undefined ? String(stop.payRatePerCar) : ""}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        updateStop(index, { payRatePerCar: val === "" ? undefined : Number(val) });
+                      }}
+                      placeholder={payRate !== undefined ? `${payRate} (default)` : "Rate"}
+                    />
+                  </Field>
 
-                    <Field label="Completed or Split">
+                  <Field label="Pickup">
+                    <SearchableLocationSelect
+                      value={stop.pickupLocation}
+                      options={locationOptions}
+                      placeholder="Where picked up"
+                      onCreateLocation={onCreateLocation}
+                      onValueChange={(v) => updateStop(index, { pickupLocation: v })}
+                    />
+                  </Field>
+
+                  <Field label="Destination">
+                    <SearchableLocationSelect
+                      value={stop.dropoffLocation}
+                      options={locationOptions}
+                      placeholder="Final destination"
+                      onCreateLocation={onCreateLocation}
+                      onValueChange={(v) => updateStop(index, { dropoffLocation: v })}
+                    />
+                  </Field>
+
+                  <Field label="Status">
+                    <Select
+                      value={stop.status}
+                      onValueChange={(v) => {
+                        const patch: Partial<DriverBoardStop> = { status: v as DriverBoardStop["status"] };
+                        if (v === "overnight") patch.overnightLocation = "SHOP";
+                        if (v === "split") patch.overnightLocation = patch.overnightLocation || "SHOP";
+                        updateStop(index, patch);
+                      }}
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="completed">Completed</SelectItem>
+                        <SelectItem value="overnight">Overnight — held at shop</SelectItem>
+                        <SelectItem value="split">Split — different driver delivers</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+
+                  {stop.status === "split" && (
+                    <Field label="This driver's leg">
                       <Select
-                        value={stop.status}
-                        onValueChange={(v) => updateStop(index, { status: v as DriverBoardStop["status"] })}
+                        value={stop.splitLeg || "pickup"}
+                        onValueChange={(v) => updateStop(index, { splitLeg: v as "pickup" | "delivery" })}
                       >
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="completed">Completed</SelectItem>
-                          <SelectItem value="overnight">Overnight (same driver, held at yard)</SelectItem>
-                          <SelectItem value="split">Split (different drivers per leg)</SelectItem>
+                          <SelectItem value="pickup">Pickup leg</SelectItem>
+                          <SelectItem value="delivery">Delivery leg</SelectItem>
                         </SelectContent>
                       </Select>
                     </Field>
+                  )}
 
-                    <Field label="Pickup Location">
-                      <SearchableLocationSelect
-                        value={stop.pickupLocation}
-                        options={locationOptions}
-                        placeholder="Select pickup"
-                        onCreateLocation={onCreateLocation}
-                        onValueChange={(v) => updateStop(index, { pickupLocation: v })}
+                  <div className="sm:col-span-2">
+                    <Field label="Notes">
+                      <Textarea
+                        value={stop.notes || ""}
+                        onChange={(e) => updateStop(index, { notes: e.target.value })}
+                        rows={2}
                       />
                     </Field>
-
-                    <Field label="Dropoff Location">
-                      <SearchableLocationSelect
-                        value={stop.dropoffLocation}
-                        options={locationOptions}
-                        placeholder="Select dropoff"
-                        onCreateLocation={onCreateLocation}
-                        onValueChange={(v) => updateStop(index, { dropoffLocation: v })}
-                      />
-                    </Field>
-
-                    {(stop.status === "overnight" || stop.status === "split") && (
-                      <Field label={stop.status === "overnight" ? "Yard / Overnight Location" : "Handoff Location"}>
-                        <SearchableLocationSelect
-                          value={stop.overnightLocation || ""}
-                          options={locationOptions}
-                          placeholder={stop.status === "overnight" ? "Where held overnight?" : "Where is the handoff?"}
-                          onCreateLocation={onCreateLocation}
-                          onValueChange={(v) => updateStop(index, { overnightLocation: v })}
-                        />
-                      </Field>
-                    )}
-
-                    {stop.status === "split" && (
-                      <Field label="This driver's leg">
-                        <Select
-                          value={stop.splitLeg || "pickup"}
-                          onValueChange={(v) => updateStop(index, { splitLeg: v as "pickup" | "delivery" })}
-                        >
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="pickup">Pickup leg</SelectItem>
-                            <SelectItem value="delivery">Delivery leg</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </Field>
-                    )}
-
-                    <div className={stop.status !== "completed" ? "md:col-span-2" : ""}>
-                      <Field label="Notes / Issues">
-                        <Textarea
-                          value={stop.notes || ""}
-                          onChange={(e) => updateStop(index, { notes: e.target.value })}
-                          rows={2}
-                          placeholder="Hold reason, issues, or notes for this load"
-                        />
-                      </Field>
-                    </div>
                   </div>
                 </div>
-              );
-            })}
-          </div>
 
-          <div className="flex justify-between gap-2 pt-2 border-t">
-            <Button variant="outline" onClick={addStop}>
-              <Plus className="mr-2 h-4 w-4" /> Add Load
-            </Button>
-            <Button onClick={handleSave}>
-              <Save className="mr-2 h-4 w-4" /> Save
-            </Button>
-          </div>
+                <div className="flex justify-between pt-2 border-t">
+                  <Button variant="destructive" size="sm" onClick={() => removeStop(index)}>
+                    Remove Load
+                  </Button>
+                  <Button onClick={() => setEditingStopIndex(null)}>Done</Button>
+                </div>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </>

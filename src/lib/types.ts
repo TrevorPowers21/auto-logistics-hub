@@ -94,6 +94,7 @@ export interface Car {
   notes?: string;
   // Movement tracking
   status?: CarStatus;
+  loadId?: string;          // which Load this car belongs to
   receivedDate?: string;    // date car arrived at shop / was received
   deliveredDate?: string;   // date car was delivered to final destination
   pickupLocation?: string;  // where it was picked up from
@@ -118,6 +119,7 @@ export interface Load {
   driverId?: string;
   price: number;
   notes: string;
+  carIds?: string[]; // linked Car records — cars on this load
 }
 
 export type BusinessLine = "auto_transport" | "auto_sales" | "towing";
