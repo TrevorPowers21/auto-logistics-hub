@@ -37,6 +37,7 @@ const navItems = [
   { title: "Expenses", url: "/expenses", icon: DollarSign },
   { title: "Fuel", url: "/fuel", icon: Fuel },
   { title: "Customers", url: "/locations", icon: MapPinned },
+  { title: "Addresses", url: "/addresses", icon: MapPinned },
   { title: "Drivers", url: "/drivers", icon: Users },
   { title: "Fleet", url: "/vehicles", icon: CarFront },
   { title: "Settings", url: "/settings", icon: Settings },

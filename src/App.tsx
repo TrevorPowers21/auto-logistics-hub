@@ -12,6 +12,7 @@ import DriversPage from "./pages/Drivers.tsx";
 import LoadsPage from "./pages/Loads.tsx";
 import ExpensesPage from "./pages/Expenses.tsx";
 import InvoicesPage from "./pages/Invoices.tsx";
+import AddressesPage from "./pages/Addresses.tsx";
 import VehiclesPage from "./pages/Vehicles.tsx";
 import PlanningBoardPage from "./pages/PlanningBoard.tsx";
 import FuelTrackingPage from "./pages/FuelTracking.tsx";
@@ -30,6 +31,7 @@ const App = () => (
           <Route path="/" element={<AppLayout><Index /></AppLayout>} />
           <Route path="/driver-recap" element={<AppLayout><DriverRecapPage /></AppLayout>} />
           <Route path="/locations" element={<AppLayout><CustomersPage /></AppLayout>} />
+          <Route path="/addresses" element={<AppLayout><AddressesPage /></AppLayout>} />
           <Route path="/cars" element={<AppLayout><CarsPage /></AppLayout>} />
           <Route path="/drivers" element={<AppLayout><DriversPage /></AppLayout>} />
           <Route path="/loads" element={<AppLayout><LoadsPage /></AppLayout>} />
