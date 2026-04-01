@@ -40,10 +40,29 @@ export default function PlanningBoardPage() {
   const [finalizeDate, setFinalizeDate] = useState<string | null>(null);
   const [finalizeSlot, setFinalizeSlot] = useState<PlanningSlot | null>(null);
 
+  const customerOptions = useMemo(
+    () => locations.slice().sort((a, b) => a.name.localeCompare(b.name)),
+    [locations],
+  );
+
   const addressOptions = useMemo(
     () => addresses.slice().sort((a, b) => a.name.localeCompare(b.name)),
     [addresses],
   );
+
+  const handleCreateLocation = (rawValue: string): string => {
+    const value = rawValue.trim();
+    if (!value) return "";
+    const upper = value.toUpperCase();
+    const existing = locations.find((l) => l.code === upper || l.name.toUpperCase() === upper);
+    if (existing) return existing.code;
+    const next: LocationProfile = {
+      id: generateId(), code: upper, name: value,
+      contactName: "", phone: "", email: "", address: "", notes: "",
+    };
+    saveLocations([...locations, next]);
+    return next.code;
+  };
 
   const handleCreateAddress = (rawValue: string): string => {
     const value = rawValue.trim();
@@ -468,7 +487,9 @@ export default function PlanningBoardPage() {
         slot={editingSlot}
         drivers={activeDrivers}
         allSlots={allSlots}
+        customerOptions={customerOptions}
         addressOptions={addressOptions}
+        onCreateLocation={handleCreateLocation}
         onCreateAddress={handleCreateAddress}
         onSave={saveSlot}
         onDelete={deleteSlot}
@@ -511,20 +532,24 @@ export default function PlanningBoardPage() {
 // ─── Slot Edit Dialog ─────────────────────────────────────────────────────────
 
 function SlotDialog({
-  slot, drivers, allSlots, addressOptions, onCreateAddress, onSave, onDelete, onUnassign, onClose,
+  slot, drivers, allSlots, customerOptions, addressOptions, onCreateLocation, onCreateAddress, onSave, onDelete, onUnassign, onClose,
 }: {
   slot: PlanningSlot | null;
   drivers: Driver[];
   allSlots: PlanningSlot[];
+  customerOptions: LocationProfile[];
   addressOptions: Address[];
+  onCreateLocation: (value: string) => string;
   onCreateAddress: (value: string) => string;
   onSave: (slot: PlanningSlot) => void;
   onDelete: (id: string) => void;
   onUnassign: (id: string) => void;
   onClose: () => void;
 }) {
+  const [customer, setCustomer] = useState("");
   const [pickup, setPickup] = useState("");
   const [delivery, setDelivery] = useState("");
+  const [customerSearch, setCustomerSearch] = useState("");
   const [pickupSearch, setPickupSearch] = useState("");
   const [deliverySearch, setDeliverySearch] = useState("");
 
@@ -542,11 +567,13 @@ function SlotDialog({
     if (!slot) return;
     const fd = new FormData(e.currentTarget);
     const count = Number(fd.get("carCount")) || 0;
-    const summary = [count ? `${count} cars` : "", pickup, delivery].filter(Boolean).join(" → ") || "New load";
+    const custName = customerOptions.find((l) => l.code === customer)?.name || customer;
+    const summary = [count ? `${count} cars` : "", custName, pickup, delivery].filter(Boolean).join(" → ") || "New load";
     onSave({
       ...slot,
       date: fd.get("date") as string || slot.date,
       driverId: (fd.get("driverId") as string) || slot.driverId || undefined,
+      customer: customer || undefined,
       loadSummary: summary,
       pickupLocation: pickup || undefined,
       deliveryLocation: delivery || undefined,
@@ -558,13 +585,24 @@ function SlotDialog({
   // Reset fields when dialog opens with a new slot
   useState(() => {
     if (slot) {
+      setCustomer(slot.customer || "");
       setPickup(slot.pickupLocation || "");
       setDelivery(slot.deliveryLocation || "");
     }
   });
 
+  if (slot && customer === "" && slot.customer) setCustomer(slot.customer);
   if (slot && pickup === "" && slot.pickupLocation) setPickup(slot.pickupLocation);
   if (slot && delivery === "" && slot.deliveryLocation) setDelivery(slot.deliveryLocation);
+
+  const filteredCustomers = (q: string) =>
+    customerOptions.filter((l) =>
+      !q || l.name.toUpperCase().includes(q.toUpperCase()) || l.code.includes(q.toUpperCase()),
+    ).slice(0, 20);
+  const canCreateCustomer = customerSearch.trim().length > 0 && !customerOptions.some((l) =>
+    l.name.toUpperCase() === customerSearch.trim().toUpperCase() || l.code === customerSearch.trim().toUpperCase(),
+  );
+  const selectedCustomer = customerOptions.find((l) => l.code === customer);
 
   const filteredAddresses = (search: string) =>
     addressOptions.filter((a) =>
@@ -586,9 +624,42 @@ function SlotDialog({
         {slot && (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
+              {/* Customer */}
+              <div className="sm:col-span-2">
+                <Label>Customer</Label>
+                <div className="relative">
+                  <Input
+                    value={customerSearch || (selectedCustomer ? `${selectedCustomer.name} (${selectedCustomer.code})` : customer)}
+                    onChange={(e) => { setCustomerSearch(e.target.value); if (!e.target.value) setCustomer(""); }}
+                    onFocus={() => setCustomerSearch(selectedCustomer?.name || customer)}
+                    onBlur={() => setTimeout(() => setCustomerSearch(""), 150)}
+                    placeholder="Search customer by name..."
+                    autoFocus
+                  />
+                  {customerSearch && (
+                    <div className="absolute z-50 top-full mt-1 w-full rounded-md border bg-white shadow-lg max-h-48 overflow-y-auto">
+                      {filteredCustomers(customerSearch).map((l) => (
+                        <button key={l.id} type="button"
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/60 ${customer === l.code ? "bg-muted" : ""}`}
+                          onMouseDown={(e) => { e.preventDefault(); setCustomer(l.code); setCustomerSearch(""); }}>
+                          <span className="font-medium">{l.name}</span>
+                          <span className="text-muted-foreground ml-2 text-xs font-mono">{l.code}</span>
+                        </button>
+                      ))}
+                      {canCreateCustomer && (
+                        <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-muted/60 text-primary"
+                          onMouseDown={(e) => { e.preventDefault(); const c = onCreateLocation(customerSearch); if (c) setCustomer(c); setCustomerSearch(""); }}>
+                          <Plus className="inline h-3 w-3 mr-1" />Add "{customerSearch.trim()}"
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div>
                 <Label>Cars</Label>
-                <Input name="carCount" type="number" min="0" defaultValue={slot.carCount || ""} placeholder="How many?" autoFocus />
+                <Input name="carCount" type="number" min="0" defaultValue={slot.carCount || ""} placeholder="How many?" />
               </div>
               <div>
                 <Label>Day</Label>

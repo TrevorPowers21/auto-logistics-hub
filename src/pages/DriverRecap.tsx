@@ -619,6 +619,11 @@ function DriverLoadTable({
                 >
                   <span className="tabular-nums font-bold text-sm w-6 text-center">{stop.carCount}</span>
                   <div className="flex-1 min-w-0 text-sm">
+                    {stop.customer && (
+                      <span className="text-xs text-muted-foreground mr-1">
+                        {locationOptions.find((l) => l.code === stop.customer)?.name || stop.customer}:
+                      </span>
+                    )}
                     <span>{stop.pickupLocation || "?"}</span>
                     <span className="text-muted-foreground mx-1">→</span>
                     <span>{stop.dropoffLocation || "?"}</span>
@@ -677,13 +682,24 @@ function DriverLoadTable({
                 )}
 
                 <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <Field label="Customer">
+                      <SearchableLocationSelect
+                        value={stop.customer || ""}
+                        options={locationOptions}
+                        placeholder="Select customer"
+                        onCreateLocation={onCreateLocation}
+                        onValueChange={(v) => updateStop(index, { customer: v })}
+                      />
+                    </Field>
+                  </div>
+
                   <Field label="Cars">
                     <Input
                       type="text"
                       inputMode="numeric"
                       value={String(stop.carCount)}
                       onChange={(e) => updateStop(index, { carCount: Number(e.target.value.replace(/\D/g, "")) || 0 })}
-                      autoFocus
                     />
                   </Field>
 

@@ -80,6 +80,7 @@ export type DispatchStopStatus = "completed" | "overnight" | "split";
 
 export interface DriverBoardStop {
   id: string;
+  customer?: string;  // customer code
   carCount: number;
   pickupLocation: string;
   dropoffLocation: string;
@@ -214,7 +215,8 @@ export interface PlanningSlot {
   id: string;
   date: string;
   driverId?: string;           // can be blank — load entered before driver assigned
-  loadSummary: string;         // free-text load description
+  customer?: string;           // customer code from locations
+  loadSummary: string;         // auto-generated from fields
   pickupLocation?: string;
   deliveryLocation?: string;
   carCount?: number;
