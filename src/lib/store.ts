@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 import {
-  Car, DispatchCodeDefinition, Driver, DriverBoardEntry, DriverBoardStop,
+  Address, Car, DispatchCodeDefinition, Driver, DriverBoardEntry, DriverBoardStop,
   DriverDailyUpdate, FuelEntry, Load, Expense, Invoice, LocationProfile,
   PlanningSlot, Vehicle, FleetMaintenanceEntry,
 } from "./types";
@@ -9,7 +9,7 @@ import {
 
 type StoreKey =
   | "cars" | "drivers" | "driverUpdates" | "driverBoards" | "dispatchCodes"
-  | "locations" | "loads" | "expenses" | "invoices" | "vehicles"
+  | "locations" | "addresses" | "loads" | "expenses" | "invoices" | "vehicles"
   | "fuelEntries" | "planningSlots";
 
 const TABLE_MAP: Record<StoreKey, string> = {
@@ -19,6 +19,7 @@ const TABLE_MAP: Record<StoreKey, string> = {
   driverBoards: "driver_boards",
   dispatchCodes: "dispatch_codes",
   locations: "locations",
+  addresses: "addresses",
   loads: "loads",
   expenses: "expenses",
   invoices: "invoices",
@@ -95,6 +96,7 @@ const DEFAULTS: Record<StoreKey, unknown[]> = {
   driverBoards: [],
   dispatchCodes: [],
   locations: [],
+  addresses: [],
   loads: [],
   expenses: [],
   invoices: [],
@@ -268,6 +270,7 @@ export function getDriverUpdates(): DriverDailyUpdate[] { return getStore<Driver
 export function getDriverBoards(): DriverBoardEntry[] { return getStore<DriverBoardEntry>("driverBoards"); }
 export function getDispatchCodes(): DispatchCodeDefinition[] { return getStore<DispatchCodeDefinition>("dispatchCodes"); }
 export function getLocations(): LocationProfile[] { return getStore<LocationProfile>("locations"); }
+export function getAddresses(): Address[] { return getStore<Address>("addresses"); }
 export function getLoads(): Load[] { return getStore<Load>("loads"); }
 export function getExpenses(): Expense[] { return getStore<Expense>("expenses"); }
 export function getInvoices(): Invoice[] { return getStore<Invoice>("invoices"); }
@@ -281,6 +284,7 @@ export function saveDriverUpdates(d: DriverDailyUpdate[]) { setStore("driverUpda
 export function saveDriverBoards(d: DriverBoardEntry[]) { setStore("driverBoards", d); }
 export function saveDispatchCodes(d: DispatchCodeDefinition[]) { setStore("dispatchCodes", d); }
 export function saveLocations(d: LocationProfile[]) { setStore("locations", d); }
+export function saveAddresses(d: Address[]) { setStore("addresses", d); }
 export function saveLoads(d: Load[]) { setStore("loads", d); }
 export function saveExpenses(d: Expense[]) { setStore("expenses", d); }
 export function saveInvoices(d: Invoice[]) { setStore("invoices", d); }

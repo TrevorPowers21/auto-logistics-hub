@@ -11,11 +11,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
 import {
   getLoads, saveLoads, getDrivers, getCars, saveCars, getLocations, saveLocations,
+  getAddresses, saveAddresses,
   getPlanningSlots, savePlanningSlots, getDriverBoards, saveDriverBoards,
   generateId,
 } from "@/lib/store";
 import { useStoreData } from "@/hooks/use-store";
-import { Car, Load, LoadStatus, LocationProfile } from "@/lib/types";
+import { Address, Car, Load, LoadStatus, LocationProfile } from "@/lib/types";
 import { decodeVin } from "@/lib/vin";
 import { Plus, Search, Filter, Truck, X } from "lucide-react";
 
@@ -47,13 +48,14 @@ export default function LoadsPage() {
   const drivers = useStoreData(getDrivers);
   const cars = useStoreData(getCars);
   const locations = useStoreData(getLocations);
+  const addresses = useStoreData(getAddresses);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [open, setOpen] = useState(false);
   const [newDriverId, setNewDriverId] = useState("");
-  const [newCustomer, setNewCustomer] = useState("");
-  const [newPickup, setNewPickup] = useState("");
-  const [newDelivery, setNewDelivery] = useState("");
+  const [newCustomer, setNewCustomer] = useState(""); // customer code
+  const [newPickup, setNewPickup] = useState("");     // address text
+  const [newDelivery, setNewDelivery] = useState("");  // address text
   const [detailLoad, setDetailLoad] = useState<Load | null>(null);
 
   // Car entry state for new load dialog
@@ -61,8 +63,20 @@ export default function LoadsPage() {
   const [vinInput, setVinInput] = useState("");
   const [decoding, setDecoding] = useState(false);
 
+  // Customer options — sorted by name (display name first, code secondary)
+  const customerOptions = useMemo(
+    () => locations.slice().sort((a, b) => a.name.localeCompare(b.name)),
+    [locations],
+  );
+
+  // Address options — sorted by name
+  const addressOptions = useMemo(
+    () => addresses.slice().sort((a, b) => a.name.localeCompare(b.name)),
+    [addresses],
+  );
+
   const locationOptions = useMemo(
-    () => locations.slice().sort((a, b) => a.code.localeCompare(b.code)),
+    () => locations.slice().sort((a, b) => a.name.localeCompare(b.name)),
     [locations],
   );
 
@@ -78,6 +92,18 @@ export default function LoadsPage() {
     };
     saveLocations([...locations, next]);
     return next.code;
+  };
+
+  const handleCreateAddress = (rawValue: string): string => {
+    const value = rawValue.trim();
+    if (!value) return value;
+    const existing = addresses.find((a) => a.name.toUpperCase() === value.toUpperCase());
+    if (existing) return existing.name;
+    const next: Address = {
+      id: generateId(), name: value, line1: "", city: "", state: "", zip: "",
+    };
+    saveAddresses([...addresses, next]);
+    return next.name;
   };
 
   const handleOpenChange = (isOpen: boolean) => {
@@ -319,15 +345,27 @@ export default function LoadsPage() {
     return cars.filter((c) => load.carIds!.includes(c.id));
   };
 
-  // Resolve location code to display with city
-  const locationDisplay = (code: string): string => {
+  // Display address or fall back to raw value
+  const addressDisplay = (val: string): string => {
+    if (!val) return "—";
+    const addr = addresses.find((a) => a.name === val);
+    if (addr && addr.city) return `${addr.name}, ${addr.city} ${addr.state}`.trim();
+    if (addr) return addr.name;
+    // Legacy: try locations
+    const loc = locations.find((l) => l.code === val);
+    if (loc) {
+      const parts = loc.address?.split(",").map((s) => s.trim()) || [];
+      const city = parts.length >= 2 ? parts.slice(-2).join(", ") : "";
+      return city ? `${loc.name} (${city})` : loc.name;
+    }
+    return val;
+  };
+
+  // Display customer name from code
+  const customerDisplay = (code: string): string => {
     if (!code) return "—";
     const loc = locations.find((l) => l.code === code);
-    if (!loc) return code;
-    // Extract city from address (e.g. "14 Terminal Rd, South Boston, MA" → "South Boston, MA")
-    const parts = loc.address?.split(",").map((s) => s.trim()) || [];
-    const city = parts.length >= 2 ? parts.slice(-2).join(", ") : "";
-    return city ? `${loc.code} (${city})` : `${loc.code} — ${loc.name}`;
+    return loc ? loc.name : code;
   };
 
   return (
@@ -345,34 +383,34 @@ export default function LoadsPage() {
             <DialogHeader><DialogTitle>Create New Load</DialogTitle></DialogHeader>
             <form key={open ? "open" : "closed"} onSubmit={handleAdd} className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2">
-                <div>
+                <div className="sm:col-span-2">
                   <Label>Customer</Label>
-                  <LocationSearchInput
+                  <CustomerSearchInput
                     value={newCustomer}
                     onChange={setNewCustomer}
-                    options={locationOptions}
+                    options={customerOptions}
                     onCreate={handleCreateLocation}
-                    placeholder="Search customers..."
+                    placeholder="Search by name..."
                   />
                 </div>
                 <div>
-                  <Label>Pickup Location</Label>
-                  <LocationSearchInput
+                  <Label>Pickup Address</Label>
+                  <AddressSearchInput
                     value={newPickup}
                     onChange={setNewPickup}
-                    options={locationOptions}
-                    onCreate={handleCreateLocation}
-                    placeholder="Search pickup..."
+                    options={addressOptions}
+                    onCreate={handleCreateAddress}
+                    placeholder="Search address..."
                   />
                 </div>
                 <div>
-                  <Label>Delivery Location</Label>
-                  <LocationSearchInput
+                  <Label>Delivery Address</Label>
+                  <AddressSearchInput
                     value={newDelivery}
                     onChange={setNewDelivery}
-                    options={locationOptions}
-                    onCreate={handleCreateLocation}
-                    placeholder="Search delivery..."
+                    options={addressOptions}
+                    onCreate={handleCreateAddress}
+                    placeholder="Search address..."
                   />
                 </div>
                 <div><Label>Pickup Date</Label><Input name="pickupDate" type="date" required /></div>
@@ -535,8 +573,8 @@ export default function LoadsPage() {
                   return (
                     <TableRow key={l.id} className={`cursor-pointer ${incomplete ? "bg-red-50 shadow-[inset_0_0_0_2px_rgba(239,68,68,0.4)]" : "hover:bg-muted/50"}`} onClick={() => setDetailLoad(l)}>
                       <TableCell className="font-mono text-sm">{l.referenceNumber}</TableCell>
-                      <TableCell className="font-medium">{l.customer}</TableCell>
-                      <TableCell className="text-sm">{locationDisplay(l.pickupLocation)} → {locationDisplay(l.deliveryLocation)}</TableCell>
+                      <TableCell className="font-medium">{customerDisplay(l.customer)}</TableCell>
+                      <TableCell className="text-sm">{addressDisplay(l.pickupLocation)} → {addressDisplay(l.deliveryLocation)}</TableCell>
                       <TableCell>
                         {loadCars.length > 0 ? (
                           <Badge variant="secondary">{loadCars.length} VIN{loadCars.length === 1 ? "" : "s"}</Badge>
@@ -579,8 +617,10 @@ export default function LoadsPage() {
           load={detailLoad}
           drivers={drivers}
           cars={cars}
-          locationOptions={locationOptions}
+          customerOptions={customerOptions}
+          addressOptions={addressOptions}
           onCreateLocation={handleCreateLocation}
+          onCreateAddress={handleCreateAddress}
           onSave={(updated, newCarIds) => {
             saveLoads(loads.map((l) => (l.id === updated.id ? updated : l)));
             if (newCarIds.length > 0) {
@@ -599,13 +639,15 @@ export default function LoadsPage() {
 // ─── Load Edit Dialog ─────────────────────────────────────────────────────────
 
 function LoadEditDialog({
-  load, drivers, cars, locationOptions, onCreateLocation, onSave, onClose,
+  load, drivers, cars, customerOptions, addressOptions, onCreateLocation, onCreateAddress, onSave, onClose,
 }: {
   load: Load;
   drivers: ReturnType<typeof getDrivers>;
   cars: Car[];
-  locationOptions: LocationProfile[];
+  customerOptions: LocationProfile[];
+  addressOptions: Address[];
   onCreateLocation: (raw: string) => string;
+  onCreateAddress: (raw: string) => string;
   onSave: (updated: Load, newCarIds: string[]) => void;
   onClose: () => void;
 }) {
@@ -703,21 +745,21 @@ function LoadEditDialog({
 
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
-            <div>
+            <div className="sm:col-span-2">
               <Label>Customer {!customer && <span className="text-red-500">*</span>}</Label>
-              <LocationSearchInput value={customer} onChange={setCustomer} options={locationOptions} onCreate={onCreateLocation} placeholder="Customer" />
+              <CustomerSearchInput value={customer} onChange={setCustomer} options={customerOptions} onCreate={onCreateLocation} placeholder="Search by name..." />
             </div>
             <div>
               <Label>Price ($) {missingPrice && <span className="text-red-500">*</span>}</Label>
               <Input value={price} onChange={(e) => setPrice(e.target.value)} type="number" step="0.01" placeholder="Enter price" />
             </div>
             <div>
-              <Label>Pickup</Label>
-              <LocationSearchInput value={pickup} onChange={setPickup} options={locationOptions} onCreate={onCreateLocation} placeholder="Pickup location" />
+              <Label>Pickup Address</Label>
+              <AddressSearchInput value={pickup} onChange={setPickup} options={addressOptions} onCreate={onCreateAddress} placeholder="Search address..." />
             </div>
             <div>
-              <Label>Delivery</Label>
-              <LocationSearchInput value={delivery} onChange={setDelivery} options={locationOptions} onCreate={onCreateLocation} placeholder="Delivery location" />
+              <Label>Delivery Address</Label>
+              <AddressSearchInput value={delivery} onChange={setDelivery} options={addressOptions} onCreate={onCreateAddress} placeholder="Search address..." />
             </div>
             <div>
               <Label>Driver</Label>
@@ -901,6 +943,141 @@ function LocationSearchInput({
           )}
           {filtered.length === 0 && !canCreate && (
             <p className="px-3 py-2 text-sm text-muted-foreground">No locations found</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Customer Search (name first, code secondary) ─────────────────────────────
+
+function CustomerSearchInput({
+  value, onChange, options, onCreate, placeholder,
+}: {
+  value: string;
+  onChange: (code: string) => void;
+  options: LocationProfile[];
+  onCreate: (raw: string) => string;
+  placeholder: string;
+}) {
+  const [search, setSearch] = useState("");
+  const [focused, setFocused] = useState(false);
+
+  const selected = options.find((l) => l.code === value);
+  const displayVal = selected ? `${selected.name} (${selected.code})` : value;
+
+  const filtered = options.filter((l) =>
+    !search || l.name.toUpperCase().includes(search.toUpperCase()) || l.code.includes(search.toUpperCase()),
+  ).slice(0, 20);
+
+  const canCreate = search.trim().length > 0 && !options.some((l) =>
+    l.name.toUpperCase() === search.trim().toUpperCase() || l.code === search.trim().toUpperCase(),
+  );
+
+  return (
+    <div className="relative">
+      <Input
+        value={focused ? search : displayVal}
+        onChange={(e) => { setSearch(e.target.value); if (!e.target.value) onChange(""); }}
+        onFocus={() => { setFocused(true); setSearch(value ? (selected?.name || value) : ""); }}
+        onBlur={() => setTimeout(() => { setFocused(false); setSearch(""); }, 150)}
+        placeholder={placeholder}
+      />
+      {focused && (
+        <div className="absolute z-50 top-full mt-1 w-full rounded-md border bg-white shadow-lg max-h-56 overflow-y-auto">
+          {filtered.map((l) => (
+            <button
+              key={l.id}
+              type="button"
+              className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/60 ${value === l.code ? "bg-muted" : ""}`}
+              onMouseDown={(e) => { e.preventDefault(); onChange(l.code); setFocused(false); setSearch(""); }}
+            >
+              <span className="font-medium">{l.name}</span>
+              <span className="text-muted-foreground ml-2 text-xs font-mono">{l.code}</span>
+            </button>
+          ))}
+          {canCreate && (
+            <button
+              type="button"
+              className="w-full text-left px-3 py-2 text-sm hover:bg-muted/60 text-primary"
+              onMouseDown={(e) => { e.preventDefault(); const c = onCreate(search); if (c) onChange(c); setFocused(false); setSearch(""); }}
+            >
+              <Plus className="inline h-3 w-3 mr-1" />Add "{search.trim()}"
+            </button>
+          )}
+          {filtered.length === 0 && !canCreate && (
+            <p className="px-3 py-2 text-sm text-muted-foreground">No customers found</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Address Search (for pickup/delivery) ─────────────────────────────────────
+
+function AddressSearchInput({
+  value, onChange, options, onCreate, placeholder,
+}: {
+  value: string;
+  onChange: (name: string) => void;
+  options: Address[];
+  onCreate: (raw: string) => string;
+  placeholder: string;
+}) {
+  const [search, setSearch] = useState("");
+  const [focused, setFocused] = useState(false);
+
+  const selected = options.find((a) => a.name === value);
+  const displayVal = selected
+    ? (selected.city ? `${selected.name}, ${selected.city} ${selected.state}` : selected.name)
+    : value;
+
+  const filtered = options.filter((a) =>
+    !search ||
+    a.name.toUpperCase().includes(search.toUpperCase()) ||
+    a.city.toUpperCase().includes(search.toUpperCase()) ||
+    a.line1.toUpperCase().includes(search.toUpperCase()),
+  ).slice(0, 20);
+
+  const canCreate = search.trim().length > 0 && !options.some((a) =>
+    a.name.toUpperCase() === search.trim().toUpperCase(),
+  );
+
+  return (
+    <div className="relative">
+      <Input
+        value={focused ? search : displayVal}
+        onChange={(e) => { setSearch(e.target.value); if (!e.target.value) onChange(""); }}
+        onFocus={() => { setFocused(true); setSearch(value || ""); }}
+        onBlur={() => setTimeout(() => { setFocused(false); setSearch(""); }, 150)}
+        placeholder={placeholder}
+      />
+      {focused && (
+        <div className="absolute z-50 top-full mt-1 w-full rounded-md border bg-white shadow-lg max-h-56 overflow-y-auto">
+          {filtered.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/60 ${value === a.name ? "bg-muted" : ""}`}
+              onMouseDown={(e) => { e.preventDefault(); onChange(a.name); setFocused(false); setSearch(""); }}
+            >
+              <span className="font-medium">{a.name}</span>
+              {a.city && <span className="text-muted-foreground ml-2 text-xs">{a.city}, {a.state}</span>}
+            </button>
+          ))}
+          {canCreate && (
+            <button
+              type="button"
+              className="w-full text-left px-3 py-2 text-sm hover:bg-muted/60 text-primary"
+              onMouseDown={(e) => { e.preventDefault(); const n = onCreate(search); if (n) onChange(n); setFocused(false); setSearch(""); }}
+            >
+              <Plus className="inline h-3 w-3 mr-1" />Add "{search.trim()}"
+            </button>
+          )}
+          {filtered.length === 0 && !canCreate && (
+            <p className="px-3 py-2 text-sm text-muted-foreground">No addresses found</p>
           )}
         </div>
       )}

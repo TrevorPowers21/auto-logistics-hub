@@ -61,6 +61,18 @@ export interface LocationProfile {
   notes: string;
 }
 
+// Physical addresses — where cars get picked up or dropped off
+export interface Address {
+  id: string;
+  name: string;       // e.g. "Healey Brothers", "Main Shop", "Manheim Newburgh"
+  line1: string;
+  line2?: string;
+  city: string;
+  state: string;
+  zip: string;
+  notes?: string;
+}
+
 // "completed" = same driver picked up and delivered in one trip
 // "overnight" = same driver picks up and delivers, but stops at yard/shop between legs
 // "split" = one driver picks up, a different driver delivers

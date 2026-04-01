@@ -80,8 +80,8 @@ export default function CustomersPage() {
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <CardTitle className="text-lg">{location.code}</CardTitle>
-                    <CardDescription className="mt-0.5">{location.name}</CardDescription>
+                    <CardTitle className="text-lg">{location.name}</CardTitle>
+                    <CardDescription className="mt-0.5 font-mono">{location.code}</CardDescription>
                   </div>
                   <Dialog
                     open={editingLocation?.id === location.id}
@@ -94,7 +94,7 @@ export default function CustomersPage() {
                     </DialogTrigger>
                     <DialogContent className="max-w-lg">
                       <DialogHeader>
-                        <DialogTitle>Edit {location.code}</DialogTitle>
+                        <DialogTitle>Edit {location.name}</DialogTitle>
                       </DialogHeader>
                       <LocationForm
                         key={location.id}
