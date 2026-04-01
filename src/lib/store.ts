@@ -132,8 +132,8 @@ async function hydrateKey(key: StoreKey): Promise<void> {
   const promise = (async () => {
     try {
       const { data, error } = await supabase.from(table).select("*");
-      if (error) { console.error(`Supabase hydrate ${table}:`, error); return; }
-      if (!data || data.length === 0) return;
+      if (error) { console.warn(`Supabase hydrate ${table}: ${error.message} (table may not exist yet)`); hydrated.add(key); return; }
+      if (!data || data.length === 0) { hydrated.add(key); return; }
 
       let camelData = data.map((row) => rowToCamel(table, row as Record<string, unknown>));
 
@@ -179,7 +179,8 @@ async function hydrateKey(key: StoreKey): Promise<void> {
       setLocal(key, camelData as any[]);
       hydrated.add(key);
     } catch (err) {
-      console.error(`Supabase hydrate ${table} failed:`, err);
+      console.warn(`Supabase hydrate ${table} failed:`, err);
+      hydrated.add(key); // Don't retry on failure
     }
   })();
 
@@ -246,7 +247,7 @@ async function syncToSupabase<T extends { id: string }>(key: StoreKey, data: T[]
       }
     }
   } catch (err) {
-    console.error(`Supabase sync ${table} failed:`, err);
+    console.warn(`Supabase sync ${table} failed:`, err);
   }
 }
 
