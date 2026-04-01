@@ -10,11 +10,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
 import { useStoreData } from "@/hooks/use-store";
 import {
-  generateId, getDrivers, getDriverBoards, getLocations, getPlanningSlots, savePlanningSlots,
-  getLoads, saveLoads, getCars, saveCars, saveLocations,
+  generateId, getDrivers, getDriverBoards, getLocations, getAddresses, getPlanningSlots, savePlanningSlots,
+  getLoads, saveLoads, getCars, saveCars, saveLocations, saveAddresses,
 } from "@/lib/store";
 import { normalizeBoardStops } from "@/lib/driver-recap";
-import { Car, Driver, Load, LocationProfile, PlanningSlot } from "@/lib/types";
+import { Address, Car, Driver, Load, LocationProfile, PlanningSlot } from "@/lib/types";
 import { decodeVin } from "@/lib/vin";
 import {
   AlertCircle, Check, ChevronLeft, ChevronRight, Copy,
@@ -33,30 +33,27 @@ export default function PlanningBoardPage() {
   const allSlots = useStoreData(getPlanningSlots);
   const boards = useStoreData(getDriverBoards);
   const locations = useStoreData(getLocations);
+  const addresses = useStoreData(getAddresses);
   const [dayOffset, setDayOffset] = useState(0);
   const [editingSlot, setEditingSlot] = useState<PlanningSlot | null>(null);
   const [assigningSlot, setAssigningSlot] = useState<PlanningSlot | null>(null);
   const [finalizeDate, setFinalizeDate] = useState<string | null>(null);
   const [finalizeSlot, setFinalizeSlot] = useState<PlanningSlot | null>(null);
 
-  const locationOptions = useMemo(
-    () => locations.slice().sort((a, b) => a.code.localeCompare(b.code)),
-    [locations],
+  const addressOptions = useMemo(
+    () => addresses.slice().sort((a, b) => a.name.localeCompare(b.name)),
+    [addresses],
   );
 
-  const handleCreateLocation = (rawValue: string): string => {
+  const handleCreateAddress = (rawValue: string): string => {
     const value = rawValue.trim();
-    if (!value) return "";
-    const upper = value.toUpperCase();
-    const existing = locations.find((l) => l.code === upper || l.name.toUpperCase() === upper);
-    if (existing) return existing.code;
-    const next: LocationProfile = {
-      id: generateId(), code: upper, name: value,
-      contactName: "", phone: "", email: "", address: "", notes: "",
-    };
-    saveLocations([...locations, next]);
-    toast("Customer added", { description: `${next.code} added to Customers.` });
-    return next.code;
+    if (!value) return value;
+    const existing = addresses.find((a) => a.name.toUpperCase() === value.toUpperCase());
+    if (existing) return existing.name;
+    const next: Address = { id: generateId(), name: value, line1: "", city: "", state: "", zip: "" };
+    saveAddresses([...addresses, next]);
+    toast("Address added", { description: `${next.name} added.` });
+    return next.name;
   };
 
   const activeDrivers = useMemo(() => drivers.filter((d) => d.status === "active"), [drivers]);
@@ -471,8 +468,8 @@ export default function PlanningBoardPage() {
         slot={editingSlot}
         drivers={activeDrivers}
         allSlots={allSlots}
-        locationOptions={locationOptions}
-        onCreateLocation={handleCreateLocation}
+        addressOptions={addressOptions}
+        onCreateAddress={handleCreateAddress}
         onSave={saveSlot}
         onDelete={deleteSlot}
         onUnassign={(id) => { unassignDriver(id); setEditingSlot(null); }}
@@ -514,13 +511,13 @@ export default function PlanningBoardPage() {
 // ─── Slot Edit Dialog ─────────────────────────────────────────────────────────
 
 function SlotDialog({
-  slot, drivers, allSlots, locationOptions, onCreateLocation, onSave, onDelete, onUnassign, onClose,
+  slot, drivers, allSlots, addressOptions, onCreateAddress, onSave, onDelete, onUnassign, onClose,
 }: {
   slot: PlanningSlot | null;
   drivers: Driver[];
   allSlots: PlanningSlot[];
-  locationOptions: LocationProfile[];
-  onCreateLocation: (value: string) => string;
+  addressOptions: Address[];
+  onCreateAddress: (value: string) => string;
   onSave: (slot: PlanningSlot) => void;
   onDelete: (id: string) => void;
   onUnassign: (id: string) => void;
@@ -569,13 +566,13 @@ function SlotDialog({
   if (slot && pickup === "" && slot.pickupLocation) setPickup(slot.pickupLocation);
   if (slot && delivery === "" && slot.deliveryLocation) setDelivery(slot.deliveryLocation);
 
-  const filteredLocations = (search: string) =>
-    locationOptions.filter((l) =>
-      !search || l.code.includes(search.toUpperCase()) || l.name.toUpperCase().includes(search.toUpperCase()),
-    );
+  const filteredAddresses = (search: string) =>
+    addressOptions.filter((a) =>
+      !search || a.name.toUpperCase().includes(search.toUpperCase()) || a.city.toUpperCase().includes(search.toUpperCase()),
+    ).slice(0, 20);
 
-  const canCreatePickup = pickupSearch.trim().length > 0 && !locationOptions.some((l) => l.code === pickupSearch.trim().toUpperCase());
-  const canCreateDelivery = deliverySearch.trim().length > 0 && !locationOptions.some((l) => l.code === deliverySearch.trim().toUpperCase());
+  const canCreatePickup = pickupSearch.trim().length > 0 && !addressOptions.some((a) => a.name.toUpperCase() === pickupSearch.trim().toUpperCase());
+  const canCreateDelivery = deliverySearch.trim().length > 0 && !addressOptions.some((a) => a.name.toUpperCase() === deliverySearch.trim().toUpperCase());
 
   return (
     <Dialog
@@ -598,42 +595,31 @@ function SlotDialog({
                 <Input name="date" type="date" defaultValue={slot.date} required />
               </div>
 
-              {/* Pickup — searchable location */}
+              {/* Pickup address */}
               <div>
-                <Label>Pickup From</Label>
+                <Label>Pickup Address</Label>
                 <div className="relative">
                   <Input
                     value={pickupSearch || pickup}
                     onChange={(e) => { setPickupSearch(e.target.value); if (!e.target.value) setPickup(""); }}
                     onFocus={() => setPickupSearch(pickup)}
                     onBlur={() => setTimeout(() => setPickupSearch(""), 150)}
-                    placeholder="Search or type location"
+                    placeholder="Search address..."
                   />
                   {pickupSearch && (
                     <div className="absolute z-50 top-full mt-1 w-full rounded-md border bg-white shadow-lg max-h-48 overflow-y-auto">
-                      {filteredLocations(pickupSearch).map((l) => (
-                        <button
-                          key={l.id}
-                          type="button"
-                          className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/60 ${pickup === l.code ? "bg-muted" : ""}`}
-                          onMouseDown={(e) => { e.preventDefault(); setPickup(l.code); setPickupSearch(""); }}
-                        >
-                          <span className="font-medium">{l.code}</span>
-                          <span className="text-muted-foreground ml-2">{l.name}</span>
+                      {filteredAddresses(pickupSearch).map((a) => (
+                        <button key={a.id} type="button"
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/60 ${pickup === a.name ? "bg-muted" : ""}`}
+                          onMouseDown={(e) => { e.preventDefault(); setPickup(a.name); setPickupSearch(""); }}>
+                          <span className="font-medium">{a.name}</span>
+                          {a.city && <span className="text-muted-foreground ml-2 text-xs">{a.city}, {a.state}</span>}
                         </button>
                       ))}
                       {canCreatePickup && (
-                        <button
-                          type="button"
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-muted/60 text-primary"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            const code = onCreateLocation(pickupSearch);
-                            if (code) setPickup(code);
-                            setPickupSearch("");
-                          }}
-                        >
-                          <Plus className="inline h-3 w-3 mr-1" />Create "{pickupSearch.trim()}"
+                        <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-muted/60 text-primary"
+                          onMouseDown={(e) => { e.preventDefault(); const n = onCreateAddress(pickupSearch); if (n) setPickup(n); setPickupSearch(""); }}>
+                          <Plus className="inline h-3 w-3 mr-1" />Add "{pickupSearch.trim()}"
                         </button>
                       )}
                     </div>
@@ -641,42 +627,31 @@ function SlotDialog({
                 </div>
               </div>
 
-              {/* Delivery — searchable location */}
+              {/* Delivery address */}
               <div>
-                <Label>Delivering To</Label>
+                <Label>Delivery Address</Label>
                 <div className="relative">
                   <Input
                     value={deliverySearch || delivery}
                     onChange={(e) => { setDeliverySearch(e.target.value); if (!e.target.value) setDelivery(""); }}
                     onFocus={() => setDeliverySearch(delivery)}
                     onBlur={() => setTimeout(() => setDeliverySearch(""), 150)}
-                    placeholder="Search or type location"
+                    placeholder="Search address..."
                   />
                   {deliverySearch && (
                     <div className="absolute z-50 top-full mt-1 w-full rounded-md border bg-white shadow-lg max-h-48 overflow-y-auto">
-                      {filteredLocations(deliverySearch).map((l) => (
-                        <button
-                          key={l.id}
-                          type="button"
-                          className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/60 ${delivery === l.code ? "bg-muted" : ""}`}
-                          onMouseDown={(e) => { e.preventDefault(); setDelivery(l.code); setDeliverySearch(""); }}
-                        >
-                          <span className="font-medium">{l.code}</span>
-                          <span className="text-muted-foreground ml-2">{l.name}</span>
+                      {filteredAddresses(deliverySearch).map((a) => (
+                        <button key={a.id} type="button"
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/60 ${delivery === a.name ? "bg-muted" : ""}`}
+                          onMouseDown={(e) => { e.preventDefault(); setDelivery(a.name); setDeliverySearch(""); }}>
+                          <span className="font-medium">{a.name}</span>
+                          {a.city && <span className="text-muted-foreground ml-2 text-xs">{a.city}, {a.state}</span>}
                         </button>
                       ))}
                       {canCreateDelivery && (
-                        <button
-                          type="button"
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-muted/60 text-primary"
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            const code = onCreateLocation(deliverySearch);
-                            if (code) setDelivery(code);
-                            setDeliverySearch("");
-                          }}
-                        >
-                          <Plus className="inline h-3 w-3 mr-1" />Create "{deliverySearch.trim()}"
+                        <button type="button" className="w-full text-left px-3 py-2 text-sm hover:bg-muted/60 text-primary"
+                          onMouseDown={(e) => { e.preventDefault(); const n = onCreateAddress(deliverySearch); if (n) setDelivery(n); setDeliverySearch(""); }}>
+                          <Plus className="inline h-3 w-3 mr-1" />Add "{deliverySearch.trim()}"
                         </button>
                       )}
                     </div>

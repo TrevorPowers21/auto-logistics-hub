@@ -34,8 +34,8 @@ import {
   sanitizeBoardStops,
   formatRecapHeadingShort,
 } from "@/lib/driver-recap";
-import { generateId, getLocations, getDriverBoards, getDrivers, getPlanningSlots, saveDriverBoards, saveLocations } from "@/lib/store";
-import { Driver, DriverBoardEntry, DriverBoardStop, LocationProfile, PlanningSlot } from "@/lib/types";
+import { generateId, getLocations, getAddresses, getDriverBoards, getDrivers, getPlanningSlots, saveDriverBoards, saveLocations, saveAddresses } from "@/lib/store";
+import { Address, Driver, DriverBoardEntry, DriverBoardStop, LocationProfile, PlanningSlot } from "@/lib/types";
 import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, Download, Plus, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { addDays, format, startOfWeek, addWeeks } from "date-fns";
@@ -70,10 +70,12 @@ export default function DriverRecapPage() {
   const boards = useStoreData(getDriverBoards);
   const planningSlots = useStoreData(getPlanningSlots);
   const locations = useStoreData(getLocations);
+  const addresses = useStoreData(getAddresses);
   const [date, setDate] = useState(getYesterdayDate);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [weekOffset, setWeekOffset] = useState(0);
-  const locationOptions = useMemo(() => locations.slice().sort((a, b) => a.code.localeCompare(b.code)), [locations]);
+  const locationOptions = useMemo(() => locations.slice().sort((a, b) => a.name.localeCompare(b.name)), [locations]);
+  const addressOptions = useMemo(() => addresses.slice().sort((a, b) => a.name.localeCompare(b.name)), [addresses]);
 
   const activeDrivers = useMemo(
     () => drivers.filter((d) => d.status !== "inactive"),
@@ -261,6 +263,17 @@ export default function DriverRecapPage() {
     return next.code;
   };
 
+  const handleCreateAddress = (rawValue: string): string => {
+    const value = rawValue.trim();
+    if (!value) return value;
+    const existing = addresses.find((a) => a.name.toUpperCase() === value.toUpperCase());
+    if (existing) return existing.name;
+    const next: Address = { id: generateId(), name: value, line1: "", city: "", state: "", zip: "" };
+    saveAddresses([...addresses, next]);
+    toast("Address added", { description: `${next.name} added.` });
+    return next.name;
+  };
+
   const handleExportDay = () => {
     const text = buildDailyExportText(date, driverRows, pickupRecap, dropoffRecap);
     downloadText(text, `recap-${date}.txt`);
@@ -368,7 +381,9 @@ export default function DriverRecapPage() {
                 key={row.id}
                 row={row}
                 locationOptions={locationOptions}
+                addressOptions={addressOptions}
                 onCreateLocation={handleCreateLocation}
+                onCreateAddress={handleCreateAddress}
                 onSave={handleSaveStops}
               />
             ))}
@@ -506,12 +521,16 @@ export default function DriverRecapPage() {
 function DriverLoadTable({
   row,
   locationOptions,
+  addressOptions,
   onCreateLocation,
+  onCreateAddress,
   onSave,
 }: {
   row: DriverSheetRow;
   locationOptions: LocationProfile[];
+  addressOptions: Address[];
   onCreateLocation: (value: string) => string;
+  onCreateAddress: (value: string) => string;
   onSave: (driverId: string, stops: DriverBoardStop[]) => void;
 }) {
   const [editingStopIndex, setEditingStopIndex] = useState<number | null>(null);
@@ -682,22 +701,22 @@ function DriverLoadTable({
                     />
                   </Field>
 
-                  <Field label="Pickup">
-                    <SearchableLocationSelect
+                  <Field label="Pickup Address">
+                    <SearchableAddressSelect
                       value={stop.pickupLocation}
-                      options={locationOptions}
+                      options={addressOptions}
                       placeholder="Where picked up"
-                      onCreateLocation={onCreateLocation}
+                      onCreate={onCreateAddress}
                       onValueChange={(v) => updateStop(index, { pickupLocation: v })}
                     />
                   </Field>
 
-                  <Field label="Destination">
-                    <SearchableLocationSelect
+                  <Field label="Destination Address">
+                    <SearchableAddressSelect
                       value={stop.dropoffLocation}
-                      options={locationOptions}
+                      options={addressOptions}
                       placeholder="Final destination"
-                      onCreateLocation={onCreateLocation}
+                      onCreate={onCreateAddress}
                       onValueChange={(v) => updateStop(index, { dropoffLocation: v })}
                     />
                   </Field>
@@ -818,6 +837,74 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <Label className="text-xs">{label}</Label>
       {children}
     </div>
+  );
+}
+
+function SearchableAddressSelect({
+  value, options, placeholder, onCreate, onValueChange,
+}: {
+  value: string;
+  options: Address[];
+  placeholder: string;
+  onCreate: (value: string) => string;
+  onValueChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const filtered = options.filter((a) =>
+    !query || a.name.toUpperCase().includes(query.toUpperCase()) || a.city.toUpperCase().includes(query.toUpperCase()),
+  ).slice(0, 20);
+  const canCreate = query.trim().length > 0 && !options.some((a) => a.name.toUpperCase() === query.trim().toUpperCase());
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" role="combobox" className="w-full justify-between font-normal text-sm">
+          {value ? <span>{value}</span> : <span className="text-muted-foreground">{placeholder}</span>}
+          <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[320px] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Search addresses..." value={query} onValueChange={setQuery} />
+          <CommandList>
+            <CommandGroup>
+              {filtered.map((a) => (
+                <CommandItem
+                  key={a.id}
+                  value={`${a.name} ${a.city} ${a.line1}`}
+                  onSelect={() => { onValueChange(a.name); setOpen(false); }}
+                >
+                  <Check className={cn("mr-2 h-4 w-4", value === a.name ? "opacity-100" : "opacity-0")} />
+                  <div className="flex flex-col">
+                    <span className="text-sm">{a.name}</span>
+                    {a.city && <span className="text-xs text-muted-foreground">{a.city}, {a.state}</span>}
+                  </div>
+                </CommandItem>
+              ))}
+              {canCreate && (
+                <CommandItem
+                  value={`create:${query}`}
+                  onSelect={() => {
+                    const name = onCreate(query);
+                    if (name) onValueChange(name);
+                    setQuery("");
+                    setOpen(false);
+                  }}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  <div className="flex flex-col">
+                    <span className="text-sm">Add "{query.trim()}"</span>
+                    <span className="text-xs text-muted-foreground">Create new address</span>
+                  </div>
+                </CommandItem>
+              )}
+            </CommandGroup>
+            <CommandEmpty>No address found.</CommandEmpty>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
 
