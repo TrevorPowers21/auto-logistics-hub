@@ -1,10 +1,12 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
@@ -13,11 +15,12 @@ import {
   generateId, getDrivers, getDriverBoards, getLocations, getAddresses, getPlanningSlots, savePlanningSlots,
   getLoads, saveLoads, getCars, saveCars, saveLocations, saveAddresses,
 } from "@/lib/store";
+import { syncLoadsToPlanning } from "@/pages/Loads";
 import { normalizeBoardStops } from "@/lib/driver-recap";
 import { Address, Car, Driver, Load, LocationProfile, PlanningSlot } from "@/lib/types";
 import { decodeVin } from "@/lib/vin";
 import {
-  AlertCircle, Check, ChevronLeft, ChevronRight, Copy,
+  AlertCircle, Ban, CalendarDays, Check, ChevronLeft, ChevronRight, Copy,
   Download, Plus, Trash2, UserPlus, X, Rocket,
 } from "lucide-react";
 import { addDays, format, subDays } from "date-fns";
@@ -34,6 +37,12 @@ export default function PlanningBoardPage() {
   const boards = useStoreData(getDriverBoards);
   const locations = useStoreData(getLocations);
   const addresses = useStoreData(getAddresses);
+  const allLoads = useStoreData(getLoads);
+
+  // Sync any loads missing from planning board
+  useEffect(() => {
+    syncLoadsToPlanning(allLoads);
+  }, [allLoads]);
   const [dayOffset, setDayOffset] = useState(0);
   const [editingSlot, setEditingSlot] = useState<PlanningSlot | null>(null);
   const [assigningSlot, setAssigningSlot] = useState<PlanningSlot | null>(null);
@@ -155,7 +164,8 @@ export default function PlanningBoardPage() {
       driver,
       slots: daySlots.filter((s) => s.driverId === driver.id),
     }));
-    const emptyDrivers = driverRows.filter((r) => r.slots.length === 0);
+    const offDriverIds = new Set(driverRows.filter((r) => r.slots.some((s) => s.loadSummary === "OFF")).map((r) => r.driver.id));
+    const emptyDrivers = driverRows.filter((r) => r.slots.length === 0 && !offDriverIds.has(r.driver.id));
     return { ...day, daySlots, unassigned, driverRows, emptyDrivers };
   }), [days, allSlots, activeDrivers]);
 
@@ -176,13 +186,25 @@ export default function PlanningBoardPage() {
   };
 
   const assignDriver = (slotId: string, driverId: string) => {
+    const slot = allSlots.find((s) => s.id === slotId);
+    // If this slot has a linked Load, update the driver on the Load too
+    if (slot?.loadId) {
+      const currentLoads = getLoads();
+      saveLoads(currentLoads.map((l) => (l.id === slot.loadId ? { ...l, driverId } : l)));
+    }
     savePlanningSlots(allSlots.map((s) => (s.id === slotId ? { ...s, driverId } : s)));
     setAssigningSlot(null);
     toast("Driver assigned");
   };
 
   const unassignDriver = (slotId: string) => {
-    savePlanningSlots(allSlots.map((s) => (s.id === slotId ? { ...s, driverId: undefined } : s)));
+    const slot = allSlots.find((s) => s.id === slotId);
+    // If this slot was finalized and has a linked Load, unassign the driver on the Load too
+    if (slot?.loadId) {
+      const currentLoads = getLoads();
+      saveLoads(currentLoads.map((l) => (l.id === slot.loadId ? { ...l, driverId: undefined } : l)));
+    }
+    savePlanningSlots(allSlots.map((s) => (s.id === slotId ? { ...s, driverId: undefined, confirmed: false } : s)));
   };
 
   // ─── Export / Copy ──────────────────────────────────────────────────────────
@@ -193,7 +215,11 @@ export default function PlanningBoardPage() {
     const lines = [`Plan for ${dayLabel}:`, ""];
     for (const driver of activeDrivers) {
       const driverSlots = daySlots.filter((s) => s.driverId === driver.id);
-      if (driverSlots.length === 0) {
+      const isOff = driverSlots.some((s) => s.loadSummary === "OFF");
+      if (isOff) {
+        const offSlot = driverSlots.find((s) => s.loadSummary === "OFF");
+        lines.push(`${driver.name}: OFF${offSlot?.notes ? ` — ${offSlot.notes}` : ""}`);
+      } else if (driverSlots.length === 0) {
         lines.push(`${driver.name}: OPEN — needs work`);
       } else {
         for (const sl of driverSlots) {
@@ -217,7 +243,11 @@ export default function PlanningBoardPage() {
     const lines = ["MONROE AUTO TRANSPORT", `DAILY PLAN — ${dayLabel}`, "─".repeat(50), ""];
     for (const driver of activeDrivers) {
       const driverSlots = daySlots.filter((s) => s.driverId === driver.id);
-      if (driverSlots.length === 0) {
+      const isOff = driverSlots.some((s) => s.loadSummary === "OFF");
+      if (isOff) {
+        const offSlot = driverSlots.find((s) => s.loadSummary === "OFF");
+        lines.push(`${driver.name}: OFF${offSlot?.notes ? ` — ${offSlot.notes}` : ""}`);
+      } else if (driverSlots.length === 0) {
         lines.push(`${driver.name}: OPEN`);
       } else {
         lines.push(`${driver.name}:`);
@@ -280,7 +310,7 @@ export default function PlanningBoardPage() {
                       {day.isToday && <Badge variant="secondary" className="ml-2 bg-primary/10 text-primary text-xs">Today</Badge>}
                     </CardTitle>
                     <p className="text-xs text-muted-foreground mt-1">
-                      {day.daySlots.length} loads · {day.emptyDrivers.length > 0 && (
+                      {day.daySlots.filter((s) => s.loadSummary !== "OFF").length} loads · {day.emptyDrivers.length > 0 && (
                         <span className="text-amber-600">{day.emptyDrivers.length} driver{day.emptyDrivers.length === 1 ? "" : "s"} open</span>
                       )}
                     </p>
@@ -299,14 +329,14 @@ export default function PlanningBoardPage() {
 
             {/* Unassigned work pool */}
             {day.unassigned.length > 0 && (
-              <Card className="border-amber-200 bg-amber-50/50">
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-amber-200">
+              <Card className="border-amber-300 bg-amber-100">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-amber-300 bg-amber-200/50">
                   <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
                   <span className="text-sm font-medium text-amber-800">Needs Driver ({day.unassigned.length})</span>
                 </div>
                 <CardContent className="p-2 space-y-1.5">
                   {day.unassigned.map((slot) => (
-                    <div key={slot.id} className="rounded-lg border border-amber-200 bg-white p-2.5">
+                    <div key={slot.id} className="rounded-lg border border-amber-300 bg-amber-50 p-2.5">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium">{slot.loadSummary || "No description"}</p>
@@ -337,64 +367,126 @@ export default function PlanningBoardPage() {
             {/* Driver cards — grid layout */}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {day.driverRows.map((row) => {
-              const driverCarTotal = row.slots.reduce((s, sl) => s + (sl.carCount || 0), 0);
+              const isOff = row.slots.some((s) => s.loadSummary === "OFF");
+              const workSlots = row.slots.filter((s) => s.loadSummary !== "OFF");
+              const driverCarTotal = workSlots.reduce((s, sl) => s + (sl.carCount || 0), 0);
               return (
-                <Card key={row.driver.id} className={`overflow-hidden ${row.slots.length === 0 ? "opacity-60" : ""}`}>
-                  <div className="flex items-center justify-between px-3 py-2 bg-muted/30 border-b">
+                <Card key={row.driver.id} className={`overflow-hidden ${isOff ? "border-gray-400 bg-gray-50" : row.slots.length === 0 ? "border-gray-300 bg-white" : "border-primary/20 bg-card shadow-sm"}`}>
+                  <div className="flex items-center justify-between px-3 py-2 bg-muted/60 border-b">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">{row.driver.name}</span>
-                      {row.slots.length === 0 ? (
+                      <span className={`text-sm font-medium ${isOff ? "text-gray-500" : ""}`}>{row.driver.name}</span>
+                      {isOff ? (
+                        <Badge variant="secondary" className="bg-gray-300 text-gray-700 text-[10px]"><Ban className="h-2.5 w-2.5 mr-0.5" /> Off</Badge>
+                      ) : row.slots.length === 0 ? (
                         <Badge variant="secondary" className="bg-amber-100 text-amber-700 text-[10px]">Open</Badge>
                       ) : (
                         <Badge variant="secondary" className="text-[10px]">{driverCarTotal} cars</Badge>
                       )}
                     </div>
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditingSlot({
-                      id: "", date: day.date, driverId: row.driver.id, loadSummary: "", confirmed: false,
-                    })}>
-                      <Plus className="h-3.5 w-3.5" />
-                    </Button>
+                    <div className="flex gap-0.5">
+                      {!isOff && (
+                        <Button variant="ghost" size="icon" className="h-6 w-6" title="Mark off" onClick={() => {
+                          const offSlot: PlanningSlot = {
+                            id: generateId(), date: day.date, driverId: row.driver.id,
+                            loadSummary: "OFF", confirmed: false,
+                          };
+                          savePlanningSlots([...allSlots, offSlot]);
+                          toast(`${row.driver.name} marked off for ${day.full}`);
+                        }}>
+                          <Ban className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditingSlot({
+                        id: "", date: day.date, driverId: row.driver.id, loadSummary: "", confirmed: false,
+                      })}>
+                        <Plus className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </div>
                   <CardContent className="p-2 space-y-1.5">
                     {/* Assigned loads */}
-                    {row.slots.map((slot) => (
+                    {row.slots.map((slot) => slot.loadSummary === "OFF" ? (
                       <div
                         key={slot.id}
-                        className={`rounded-lg border p-2.5 cursor-pointer transition-colors hover:bg-muted/40 ${
-                          slot.confirmed ? "border-emerald-200 bg-emerald-50/30" : "border-dashed"
+                        className="rounded-lg border-2 border-gray-300 bg-gray-100 p-2.5 cursor-pointer hover:bg-gray-150 transition-colors"
+                        onClick={() => setEditingSlot(slot)}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Ban className="h-4 w-4 text-gray-500" />
+                            <span className="text-sm font-medium text-gray-600">Off</span>
+                          </div>
+                          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => {
+                            e.stopPropagation();
+                            savePlanningSlots(allSlots.filter((s) => s.id !== slot.id));
+                            toast(`${row.driver.name} back on for ${day.full}`);
+                          }}>
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                        {slot.notes && <p className="text-xs text-gray-500 mt-1 italic">{slot.notes}</p>}
+                      </div>
+                    ) : (
+                      <div
+                        key={slot.id}
+                        className={`rounded-lg border-2 p-2.5 cursor-pointer transition-colors ${
+                          slot.confirmed
+                            ? "border-emerald-400 bg-emerald-100 hover:bg-emerald-150"
+                            : "border-blue-400 bg-blue-50 hover:bg-blue-100"
                         }`}
                         onClick={() => setEditingSlot(slot)}
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="text-sm font-medium leading-tight">{slot.loadSummary || "No description"}</p>
-                              {slot.carCount !== undefined && slot.carCount > 0 && (
-                                <Badge variant="outline" className="text-[10px] shrink-0">{slot.carCount}</Badge>
-                              )}
-                            </div>
+                            {/* Line 1: Customer — # (bold) */}
+                            <p className="text-sm font-bold leading-tight">
+                              {(() => {
+                                const custName = slot.customer
+                                  ? (customerOptions.find((l) => l.code === slot.customer)?.name || slot.customer)
+                                  : "";
+                                // If no customer field, try to get it from the linked load
+                                const loadCust = !custName && slot.loadId
+                                  ? (() => { const ld = getLoads().find((l) => l.id === slot.loadId); return ld?.customer ? (customerOptions.find((loc) => loc.code === ld.customer)?.name || ld.customer) : ""; })()
+                                  : "";
+                                const name = custName || loadCust;
+                                const count = slot.carCount ? `${slot.carCount}` : "";
+                                if (name && count) return `${name} — ${count}`;
+                                if (name) return name;
+                                if (count) return `${count} cars`;
+                                return slot.pickupLocation && slot.deliveryLocation
+                                  ? `${slot.pickupLocation} → ${slot.deliveryLocation}`
+                                  : "New load";
+                              })()}
+                            </p>
+                            {/* Line 2: Route */}
                             {(slot.pickupLocation || slot.deliveryLocation) && (
                               <p className="text-xs text-muted-foreground mt-0.5">
                                 {[slot.pickupLocation, slot.deliveryLocation].filter(Boolean).join(" → ")}
                               </p>
                             )}
+                            {/* Line 3: Load ID */}
+                            {slot.loadId && (
+                              <p className="text-[10px] font-mono text-muted-foreground/60 mt-0.5">
+                                {(() => { const ld = getLoads().find((l) => l.id === slot.loadId); return ld?.referenceNumber || slot.loadId.slice(0, 8); })()}
+                              </p>
+                            )}
                           </div>
                           {slot.confirmed ? (
-                            <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 text-[10px] shrink-0">
+                            <Badge variant="secondary" className="bg-emerald-200 text-emerald-800 text-[10px] shrink-0">
                               <Check className="h-2.5 w-2.5 mr-0.5" /> Set
                             </Badge>
                           ) : (
-                            <Badge variant="secondary" className="bg-gray-100 text-gray-500 text-[10px] shrink-0">Plan</Badge>
+                            <Badge variant="secondary" className="bg-blue-200 text-blue-800 text-[10px] shrink-0">Planned</Badge>
                           )}
                         </div>
-                        {slot.notes && <p className="text-xs text-muted-foreground mt-1 italic">{slot.notes}</p>}
+                        {slot.notes && !slot.loadId && <p className="text-xs text-muted-foreground mt-1 italic">{slot.notes}</p>}
                       </div>
                     ))}
 
                     {/* Quick-assign from unassigned pool */}
                     {day.unassigned.length > 0 && (
-                      <div className="rounded-lg border border-dashed border-primary/20 bg-primary/[0.02]">
-                        <p className="px-3 pt-2 pb-1 text-[10px] font-medium uppercase tracking-wider text-primary/60">
+                      <div className="rounded-lg border border-gray-300 bg-gray-100">
+                        <p className="px-3 pt-2 pb-1 text-[10px] font-medium uppercase tracking-wider text-gray-600">
                           Assign load ({day.unassigned.length} available)
                         </p>
                         <div className="px-2 pb-2 space-y-1">
@@ -402,7 +494,7 @@ export default function PlanningBoardPage() {
                             <button
                               key={slot.id}
                               type="button"
-                              className="w-full flex items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left text-xs hover:bg-primary/5 transition-colors group"
+                              className="w-full flex items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left text-xs bg-white hover:bg-gray-50 transition-colors group border border-gray-200"
                               onClick={() => assignDriver(slot.id, row.driver.id)}
                             >
                               <div className="min-w-0 flex-1">
@@ -435,8 +527,8 @@ export default function PlanningBoardPage() {
 
             {/* Spacer — Add Work is at the top of the page now */}
 
-            {/* Finalize day button */}
-            {day.daySlots.some((s) => s.driverId && !s.confirmed) && (
+            {/* Finalize day button — always visible if there are assigned slots */}
+            {day.daySlots.some((s) => s.driverId && s.loadSummary !== "OFF") && (
               <Button
                 variant="default" size="sm" className="w-full"
                 onClick={() => setFinalizeDate(day.date)}
@@ -462,17 +554,18 @@ export default function PlanningBoardPage() {
               </div>
               <div className="space-y-1.5">
                 {activeDrivers.map((driver) => {
-                  const driverBusy = allSlots.some((s) => s.driverId === driver.id && s.date === assigningSlot.date);
+                  const loadCount = allSlots.filter((s) => s.driverId === driver.id && s.date === assigningSlot.date).length;
                   return (
                     <Button
                       key={driver.id}
                       variant="outline"
-                      className={`w-full justify-start ${driverBusy ? "opacity-50" : ""}`}
+                      className="w-full justify-start"
                       onClick={() => assignDriver(assigningSlot.id, driver.id)}
                     >
                       <span className="flex-1 text-left">{driver.name}</span>
-                      {driverBusy && <span className="text-xs text-muted-foreground">has work</span>}
-                      {!driverBusy && <span className="text-xs text-emerald-600">available</span>}
+                      {loadCount > 0
+                        ? <span className="text-xs text-muted-foreground">{loadCount} load{loadCount === 1 ? "" : "s"}</span>
+                        : <span className="text-xs text-emerald-600">available</span>}
                     </Button>
                   );
                 })}
@@ -501,11 +594,50 @@ export default function PlanningBoardPage() {
       {finalizeDate && (
         <FinalizeDayDialog
           date={finalizeDate}
-          slots={allSlots.filter((s) => s.date === finalizeDate && s.driverId && !s.confirmed)}
+          slots={allSlots.filter((s) => s.date === finalizeDate && s.driverId && s.loadSummary !== "OFF")}
           drivers={activeDrivers}
+          locations={locations}
           onFinalize={(slotId) => {
             setFinalizeDate(null);
             setFinalizeSlot(allSlots.find((s) => s.id === slotId) || null);
+          }}
+          onFinalizeAll={() => {
+            const daySlots = allSlots.filter((s) => s.date === finalizeDate && s.driverId && !s.confirmed && s.loadSummary !== "OFF");
+            const loads = getLoads();
+            let created = 0;
+
+            for (const slot of daySlots) {
+              const loadId = generateId();
+              const refNumber = `LD-${new Date().getFullYear()}-${String(loads.length + created + 154).padStart(4, "0")}`;
+              const custCode = slot.customer || "";
+
+              const newLoad: Load = {
+                id: loadId,
+                referenceNumber: refNumber,
+                customer: custCode,
+                customerPhone: "",
+                pickupLocation: slot.pickupLocation || "",
+                deliveryLocation: slot.deliveryLocation || "",
+                pickupDate: slot.date,
+                deliveryDate: "",
+                vehicleInfo: slot.carCount ? `${slot.carCount} cars` : "VINs pending",
+                status: "booked",
+                driverId: slot.driverId,
+                price: 0,
+                notes: "[VINs needed]",
+              };
+              loads.push(newLoad);
+
+              // Update slot with loadId
+              const idx = allSlots.findIndex((s) => s.id === slot.id);
+              if (idx >= 0) allSlots[idx] = { ...allSlots[idx], confirmed: true, loadId };
+              created++;
+            }
+
+            saveLoads(loads);
+            savePlanningSlots([...allSlots]);
+            setFinalizeDate(null);
+            toast(`${created} load${created === 1 ? "" : "s"} finalized`);
           }}
           onClose={() => setFinalizeDate(null)}
         />
@@ -517,8 +649,8 @@ export default function PlanningBoardPage() {
           slot={finalizeSlot}
           driver={activeDrivers.find((d) => d.id === finalizeSlot.driverId)}
           onComplete={(loadId) => {
-            // Mark slot as confirmed
-            savePlanningSlots(allSlots.map((s) => (s.id === finalizeSlot.id ? { ...s, confirmed: true } : s)));
+            // Mark slot as confirmed and link to Load
+            savePlanningSlots(allSlots.map((s) => (s.id === finalizeSlot.id ? { ...s, confirmed: true, loadId } : s)));
             setFinalizeSlot(null);
             toast("Load created", { description: `Load finalized and cars added to inventory.` });
           }}
@@ -549,18 +681,25 @@ function SlotDialog({
   const [customer, setCustomer] = useState("");
   const [pickup, setPickup] = useState("");
   const [delivery, setDelivery] = useState("");
+  const [slotDate, setSlotDate] = useState<Date | undefined>(undefined);
+  const [dateOpen, setDateOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
   const [pickupSearch, setPickupSearch] = useState("");
   const [deliverySearch, setDeliverySearch] = useState("");
 
-  // Sync state when slot changes
-  const slotId = slot?.id;
-  if (slot && pickup !== (slot.pickupLocation || "") && slotId !== undefined) {
-    // handled by explicit reset below
-  }
-
-  // Reset on new slot
   const isOpen = !!slot;
+
+  // Reset all fields when a different slot opens (or a new blank one)
+  const slotKey = slot?.id ?? "";
+  useEffect(() => {
+    setCustomer(slot?.customer || "");
+    setPickup(slot?.pickupLocation || "");
+    setDelivery(slot?.deliveryLocation || "");
+    setSlotDate(slot?.date ? new Date(`${slot.date}T12:00:00`) : undefined);
+    setCustomerSearch("");
+    setPickupSearch("");
+    setDeliverySearch("");
+  }, [slotKey]);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -571,7 +710,7 @@ function SlotDialog({
     const summary = [count ? `${count} cars` : "", custName, pickup, delivery].filter(Boolean).join(" → ") || "New load";
     onSave({
       ...slot,
-      date: fd.get("date") as string || slot.date,
+      date: slotDate ? format(slotDate, "yyyy-MM-dd") : slot.date,
       driverId: (fd.get("driverId") as string) || slot.driverId || undefined,
       customer: customer || undefined,
       loadSummary: summary,
@@ -581,19 +720,6 @@ function SlotDialog({
       notes: fd.get("notes") as string || undefined,
     });
   };
-
-  // Reset fields when dialog opens with a new slot
-  useState(() => {
-    if (slot) {
-      setCustomer(slot.customer || "");
-      setPickup(slot.pickupLocation || "");
-      setDelivery(slot.deliveryLocation || "");
-    }
-  });
-
-  if (slot && customer === "" && slot.customer) setCustomer(slot.customer);
-  if (slot && pickup === "" && slot.pickupLocation) setPickup(slot.pickupLocation);
-  if (slot && delivery === "" && slot.deliveryLocation) setDelivery(slot.deliveryLocation);
 
   const filteredCustomers = (q: string) =>
     customerOptions.filter((l) =>
@@ -620,8 +746,25 @@ function SlotDialog({
       }}
     >
       <DialogContent className="max-w-lg">
-        <DialogHeader><DialogTitle>{slot?.id ? "Edit Work" : "Add Work"}</DialogTitle></DialogHeader>
-        {slot && (
+        <DialogHeader><DialogTitle>{slot?.loadSummary === "OFF" ? "Day Off" : slot?.id ? "Edit Work" : "Add Work"}</DialogTitle></DialogHeader>
+        {slot && slot.loadSummary === "OFF" ? (
+          <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); onSave({ ...slot, notes: fd.get("notes") as string || undefined }); }} className="space-y-4">
+            <div className="flex items-center gap-2 text-gray-600">
+              <Ban className="h-5 w-5" />
+              <span className="text-sm">{drivers.find((d) => d.id === slot.driverId)?.name || "Driver"} is off for this day</span>
+            </div>
+            <div>
+              <Label>Notes</Label>
+              <Textarea name="notes" defaultValue={slot.notes || ""} rows={3} placeholder="Reason for day off, expected return..." />
+            </div>
+            <div className="flex justify-between gap-3">
+              <Button type="button" variant="destructive" size="sm" onClick={() => onDelete(slot.id)}>
+                <Trash2 className="h-3.5 w-3.5 mr-1" /> Remove
+              </Button>
+              <Button type="submit">Save</Button>
+            </div>
+          </form>
+        ) : slot && (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
               {/* Customer */}
@@ -663,7 +806,21 @@ function SlotDialog({
               </div>
               <div>
                 <Label>Day</Label>
-                <Input name="date" type="date" defaultValue={slot.date} required />
+                <Popover open={dateOpen} onOpenChange={setDateOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full justify-start font-normal">
+                      <CalendarDays className="mr-2 h-4 w-4 text-muted-foreground" />
+                      {slotDate ? format(slotDate, "EEE, MMM d") : "Select date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={slotDate}
+                      onSelect={(d) => { if (d) { setSlotDate(d); setDateOpen(false); } }}
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
 
               {/* Pickup address */}
@@ -771,45 +928,57 @@ function SlotDialog({
 // ─── Finalize Day Dialog ──────────────────────────────────────────────────────
 
 function FinalizeDayDialog({
-  date, slots, drivers, onFinalize, onClose,
+  date, slots, drivers, locations, onFinalize, onFinalizeAll, onClose,
 }: {
   date: string;
   slots: PlanningSlot[];
   drivers: Driver[];
+  locations: LocationProfile[];
   onFinalize: (slotId: string) => void;
+  onFinalizeAll: () => void;
   onClose: () => void;
 }) {
   const dayLabel = format(new Date(`${date}T12:00:00`), "EEE, MMM d");
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-2xl">
         <DialogHeader><DialogTitle>Finalize Loads — {dayLabel}</DialogTitle></DialogHeader>
-        <p className="text-sm text-muted-foreground">Pick a load to finalize. You'll add the VINs, and it'll create a formal load in the system.</p>
+        <p className="text-sm text-muted-foreground">Pick a load to finalize or re-finalize. Creates a formal load in the system.</p>
         <div className="space-y-2 max-h-[60vh] overflow-y-auto">
           {slots.map((slot) => {
             const driver = drivers.find((d) => d.id === slot.driverId);
+            const custName = slot.customer
+              ? (locations.find((l) => l.code === slot.customer)?.name || slot.customer)
+              : (() => { if (!slot.loadId) return ""; const ld = getLoads().find((l) => l.id === slot.loadId); return ld?.customer ? (locations.find((loc) => loc.code === ld.customer)?.name || ld.customer) : ""; })();
             return (
               <div
                 key={slot.id}
-                className="rounded-lg border p-3 cursor-pointer hover:bg-muted/40 transition-colors"
+                className={`rounded-lg border p-3 cursor-pointer hover:bg-muted/40 transition-colors ${slot.confirmed ? "border-emerald-200 bg-emerald-50/30" : ""}`}
                 onClick={() => onFinalize(slot.id)}
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium">{slot.loadSummary}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {driver?.name} · {[slot.pickupLocation, slot.deliveryLocation].filter(Boolean).join(" → ")}
-                      {slot.carCount ? ` · ~${slot.carCount} cars` : ""}
+                    <p className="text-sm font-bold">
+                      {[slot.pickupLocation, slot.deliveryLocation].filter(Boolean).join(" → ")}{slot.carCount ? ` — ${slot.carCount}` : ""}
+                    </p>
+                    <p className="text-xs font-medium text-muted-foreground">{driver?.name || "No driver"}</p>
+                    <p className="text-xs text-muted-foreground/70">
+                      {custName || "No customer"}
                     </p>
                   </div>
                   <Button variant="outline" size="sm">
-                    <Rocket className="h-3 w-3 mr-1" /> Finalize
+                    <Rocket className="h-3 w-3 mr-1" /> {slot.confirmed ? "Re-finalize" : "Finalize"}
                   </Button>
                 </div>
               </div>
             );
           })}
+        </div>
+        <div className="flex justify-end pt-2 border-t">
+          <Button onClick={onFinalizeAll}>
+            <Rocket className="h-4 w-4 mr-1" /> Finalize All ({slots.filter((s) => !s.confirmed).length} remaining)
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -829,7 +998,7 @@ function FinalizeVinDialog({
   const [vins, setVins] = useState<PendingVin[]>([]);
   const [vinInput, setVinInput] = useState("");
   const [decoding, setDecoding] = useState(false);
-  const [customer, setCustomer] = useState("");
+  const [customer, setCustomer] = useState(slot.customer || "");
   const [price, setPrice] = useState("");
 
   // Parse multiple VINs from input (handles paste of newline/comma/space separated lists)
@@ -916,11 +1085,11 @@ function FinalizeVinDialog({
 
     const vehicleInfo = vins.length > 0
       ? vins.map((v) => `${v.year} ${v.make} ${v.model}`.trim()).join(", ")
-      : slot.carCount ? `~${slot.carCount} cars (VINs pending)` : "VINs pending";
+      : slot.carCount ? `${slot.carCount} cars` : "VINs pending";
     const newLoad: Load = {
       id: loadId,
       referenceNumber: refNumber,
-      customer: customer || slot.loadSummary,
+      customer: customer || slot.customer || "",
       customerPhone: "",
       pickupLocation: slot.pickupLocation || "",
       deliveryLocation: slot.deliveryLocation || "",
@@ -951,7 +1120,25 @@ function FinalizeVinDialog({
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <div><Label>Customer / Account</Label><Input value={customer} onChange={(e) => setCustomer(e.target.value)} placeholder={slot.loadSummary} /></div>
+          <div>
+            <Label>Customer</Label>
+            <div className="relative">
+              {(() => {
+                const locs = getLocations().sort((a, b) => a.name.localeCompare(b.name));
+                const selected = locs.find((l) => l.code === customer);
+                return (
+                  <select
+                    value={customer}
+                    onChange={(e) => setCustomer(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">Select customer</option>
+                    {locs.map((l) => <option key={l.id} value={l.code}>{l.name} ({l.code})</option>)}
+                  </select>
+                );
+              })()}
+            </div>
+          </div>
           <div><Label>Price ($)</Label><Input value={price} onChange={(e) => setPrice(e.target.value)} type="number" placeholder="0" /></div>
         </div>
 

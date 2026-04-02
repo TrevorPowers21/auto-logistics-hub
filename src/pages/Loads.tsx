@@ -1,14 +1,17 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
+import { format } from "date-fns";
 import {
   getLoads, saveLoads, getDrivers, getCars, saveCars, getLocations, saveLocations,
   getAddresses, saveAddresses,
@@ -18,7 +21,7 @@ import {
 import { useStoreData } from "@/hooks/use-store";
 import { Address, Car, Load, LoadStatus, LocationProfile } from "@/lib/types";
 import { decodeVin } from "@/lib/vin";
-import { Plus, Search, Filter, Truck, X } from "lucide-react";
+import { CalendarDays, Plus, Search, Filter, Truck, X } from "lucide-react";
 
 const statusColor: Record<LoadStatus, string> = {
   booked: "bg-blue-100 text-blue-700",
@@ -32,6 +35,57 @@ const statusLabels: LoadStatus[] = ["booked", "dispatched", "in_transit", "deliv
 
 const formatStatus = (s: string) =>
   s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+// Sync all loads to planning board — call from any page
+// Creates missing slots AND patches existing slots with missing customer/carCount data
+export function syncLoadsToPlanning(loads: Load[]) {
+  const slots = getPlanningSlots();
+  let changed = false;
+
+  // Patch existing slots that have a loadId but missing customer/carCount
+  const patched = slots.map((s) => {
+    if (!s.loadId) return s;
+    const load = loads.find((l) => l.id === s.loadId);
+    if (!load) return s;
+    const needsPatch = (!s.customer && load.customer) ||
+      (!s.carCount && load.carIds?.length) ||
+      (!s.pickupLocation && load.pickupLocation) ||
+      (!s.deliveryLocation && load.deliveryLocation) ||
+      (s.driverId !== load.driverId);
+    if (!needsPatch) return s;
+    changed = true;
+    return {
+      ...s,
+      customer: s.customer || load.customer,
+      carCount: s.carCount || load.carIds?.length,
+      pickupLocation: s.pickupLocation || load.pickupLocation,
+      deliveryLocation: s.deliveryLocation || load.deliveryLocation,
+      driverId: load.driverId,
+    };
+  });
+
+  // Create slots for loads that don't have one
+  const slotLoadIds = new Set(patched.filter((s) => s.loadId).map((s) => s.loadId));
+  const missing = loads.filter((l) => l.pickupDate && !slotLoadIds.has(l.id));
+
+  if (missing.length === 0 && !changed) return;
+
+  const newSlots = missing.map((l) => ({
+    id: generateId(),
+    date: l.pickupDate,
+    driverId: l.driverId,
+    customer: l.customer,
+    loadSummary: [l.pickupLocation, l.deliveryLocation].filter(Boolean).join(" → ") || l.referenceNumber,
+    pickupLocation: l.pickupLocation,
+    deliveryLocation: l.deliveryLocation,
+    carCount: l.carIds?.length || undefined,
+    confirmed: l.status !== "booked",
+    loadId: l.id,
+    notes: l.referenceNumber,
+  }));
+
+  savePlanningSlots([...patched, ...newSlots]);
+}
 
 type PendingCar = {
   tempId: string;
@@ -49,13 +103,22 @@ export default function LoadsPage() {
   const cars = useStoreData(getCars);
   const locations = useStoreData(getLocations);
   const addresses = useStoreData(getAddresses);
+
+  // Sync: ensure every load with a pickup date has a planning slot
+  useEffect(() => {
+    syncLoadsToPlanning(loads);
+  }, [loads]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<"pickup" | "delivered">("pickup");
   const [open, setOpen] = useState(false);
   const [newDriverId, setNewDriverId] = useState("");
   const [newCustomer, setNewCustomer] = useState(""); // customer code
   const [newPickup, setNewPickup] = useState("");     // address text
   const [newDelivery, setNewDelivery] = useState("");  // address text
+  const [newPickupDate, setNewPickupDate] = useState<Date | undefined>(undefined);
+  const [newCarCount, setNewCarCount] = useState("");
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [detailLoad, setDetailLoad] = useState<Load | null>(null);
 
   // Car entry state for new load dialog
@@ -113,6 +176,8 @@ export default function LoadsPage() {
       setNewCustomer("");
       setNewPickup("");
       setNewDelivery("");
+      setNewPickupDate(undefined);
+      setNewCarCount("");
       setPendingCars([]);
       setVinInput("");
     }
@@ -128,7 +193,10 @@ export default function LoadsPage() {
       const matchStatus = statusFilter === "all" || l.status === statusFilter;
       return matchSearch && matchStatus;
     })
-    .sort((a, b) => b.pickupDate.localeCompare(a.pickupDate));
+    .sort((a, b) => {
+      if (sortBy === "delivered") return (b.deliveryDate || "").localeCompare(a.deliveryDate || "");
+      return (b.pickupDate || "").localeCompare(a.pickupDate || "");
+    });
 
   const parseVins = (raw: string): string[] => {
     return raw
@@ -169,15 +237,18 @@ export default function LoadsPage() {
     setPendingCars((prev) => prev.filter((c) => c.tempId !== tempId));
   };
 
+  // Car count: manual input wins, otherwise count VINs
+  const effectiveCarCount = Number(newCarCount) || pendingCars.length || 0;
+
   const handleAdd = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     const pickupLocation = newPickup;
     const deliveryLocation = newDelivery;
     const customer = newCustomer;
-    const pickupDate = fd.get("pickupDate") as string;
+    const pickupDate = newPickupDate ? format(newPickupDate, "yyyy-MM-dd") : "";
+    const price = Number(fd.get("price")) || 0;
     const driverId = newDriverId || undefined;
-    // Look up customer phone from locations
     const customerLoc = locations.find((l) => l.code === customer);
     const customerPhone = customerLoc?.phone || "";
 
@@ -228,10 +299,12 @@ export default function LoadsPage() {
     // Save cars
     saveCars([...existingCars, ...newCarRecords]);
 
-    // Build vehicle info summary from cars
+    // Build vehicle info
     const vehicleInfo = pendingCars.length > 0
       ? pendingCars.map((c) => `${c.year} ${c.make} ${c.model}`.trim()).join(", ")
-      : fd.get("vehicleInfo") as string;
+      : effectiveCarCount > 0
+      ? `${effectiveCarCount} cars`
+      : "";
 
     const newLoad: Load = {
       id: loadId,
@@ -241,11 +314,11 @@ export default function LoadsPage() {
       pickupLocation,
       deliveryLocation,
       pickupDate,
-      deliveryDate: "", // filled in when marked delivered
+      deliveryDate: "",
       vehicleInfo,
       status: "booked",
       driverId,
-      price: Number(fd.get("price")),
+      price,
       notes: fd.get("notes") as string,
       carIds: carIds.length > 0 ? carIds : undefined,
     };
@@ -257,21 +330,21 @@ export default function LoadsPage() {
       id: generateId(),
       date: pickupDate,
       driverId: driverId,
-      loadSummary: `${pendingCars.length || "?"} cars → ${pickupLocation} → ${deliveryLocation}`,
+      loadSummary: [effectiveCarCount ? `${effectiveCarCount} cars` : "", pickupLocation, deliveryLocation].filter(Boolean).join(" → ") || newLoad.referenceNumber,
       pickupLocation,
       deliveryLocation,
-      carCount: pendingCars.length || undefined,
+      carCount: effectiveCarCount || undefined,
       confirmed: !!driverId,
       notes: newLoad.referenceNumber,
     }]);
 
-    // If driver is assigned, also add to Driver Recap board for that date
-    if (driverId) {
+    // If driver is assigned and we have a date, add to Driver Recap board
+    if (driverId && pickupDate) {
       const existingBoards = getDriverBoards();
       const existingBoard = existingBoards.find((b) => b.driverId === driverId && b.date === pickupDate);
       const newStop = {
         id: generateId(),
-        carCount: pendingCars.length || 0,
+        carCount: effectiveCarCount,
         pickupLocation,
         dropoffLocation: deliveryLocation,
         status: "completed" as const,
@@ -334,7 +407,7 @@ export default function LoadsPage() {
       return {
         ...l,
         status,
-        deliveryDate: status === "delivered" ? today : l.deliveryDate,
+        deliveryDate: status === "delivered" ? today : "",
       };
     }));
   };
@@ -364,8 +437,23 @@ export default function LoadsPage() {
   // Display customer name from code
   const customerDisplay = (code: string): string => {
     if (!code) return "—";
-    const loc = locations.find((l) => l.code === code);
-    return loc ? loc.name : code;
+    // Try by code first
+    const byCode = locations.find((l) => l.code === code);
+    if (byCode) return byCode.name;
+    // Try by name
+    const byName = locations.find((l) => l.name === code);
+    if (byName) return byName.name;
+    // If it contains arrows, it's an old summary — try to extract customer from it
+    if (code.includes("→")) {
+      const parts = code.split("→").map((s) => s.trim());
+      // Try first part (might be "9 cars") or second part
+      for (const part of parts) {
+        if (/^\d+\s*cars?$/i.test(part)) continue; // skip "9 cars"
+        const match = locations.find((l) => l.name === part || l.code === part);
+        if (match) return match.name;
+      }
+    }
+    return code;
   };
 
   return (
@@ -413,8 +501,46 @@ export default function LoadsPage() {
                     placeholder="Search address..."
                   />
                 </div>
-                <div><Label>Pickup Date</Label><Input name="pickupDate" type="date" required /></div>
-                <div><Label>Price ($)</Label><Input name="price" type="number" required /></div>
+                {/* Pickup date — calendar */}
+                <div>
+                  <Label>Pickup Date</Label>
+                  <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full justify-start font-normal">
+                        <CalendarDays className="mr-2 h-4 w-4 text-muted-foreground" />
+                        {newPickupDate ? format(newPickupDate, "EEE, MMM d, yyyy") : <span className="text-muted-foreground">Select date</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={newPickupDate}
+                        onSelect={(d) => { if (d) { setNewPickupDate(d); setDatePickerOpen(false); } }}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                {/* Car count — manual or auto from VINs */}
+                <div>
+                  <Label>
+                    Cars
+                    {pendingCars.length > 0 && !newCarCount && (
+                      <span className="ml-1 text-xs text-muted-foreground">({pendingCars.length} from VINs)</span>
+                    )}
+                  </Label>
+                  <Input
+                    value={newCarCount}
+                    onChange={(e) => setNewCarCount(e.target.value.replace(/\D/g, ""))}
+                    placeholder={pendingCars.length > 0 ? String(pendingCars.length) : "e.g. 9"}
+                    inputMode="numeric"
+                  />
+                </div>
+
+                <div>
+                  <Label>Price ($)</Label>
+                  <Input name="price" type="number" step="0.01" min="0" />
+                </div>
                 <div>
                   <Label>Assign Driver</Label>
                   <Select value={newDriverId} onValueChange={setNewDriverId}>
@@ -552,7 +678,12 @@ export default function LoadsPage() {
                   <TableHead>Route</TableHead>
                   <TableHead>Cars</TableHead>
                   <TableHead>Driver</TableHead>
-                  <TableHead>Pickup</TableHead>
+                  <TableHead className="cursor-pointer hover:text-foreground" onClick={() => setSortBy(sortBy === "pickup" ? "delivered" : "pickup")}>
+                    Pickup {sortBy === "pickup" && "↓"}
+                  </TableHead>
+                  <TableHead className="cursor-pointer hover:text-foreground" onClick={() => setSortBy(sortBy === "delivered" ? "pickup" : "delivered")}>
+                    Delivered {sortBy === "delivered" && "↓"}
+                  </TableHead>
                   <TableHead>Price</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="w-[140px]">Action</TableHead>
@@ -574,33 +705,30 @@ export default function LoadsPage() {
                     <TableRow key={l.id} className={`cursor-pointer ${incomplete ? "bg-red-50 shadow-[inset_0_0_0_2px_rgba(239,68,68,0.4)]" : "hover:bg-muted/50"}`} onClick={() => setDetailLoad(l)}>
                       <TableCell className="font-mono text-sm">{l.referenceNumber}</TableCell>
                       <TableCell className="font-medium">{customerDisplay(l.customer)}</TableCell>
-                      <TableCell className="text-sm">{addressDisplay(l.pickupLocation)} → {addressDisplay(l.deliveryLocation)}</TableCell>
+                      <TableCell className="text-sm">{l.pickupLocation || "—"} → {l.deliveryLocation || "—"}</TableCell>
                       <TableCell>
                         {loadCars.length > 0 ? (
-                          <Badge variant="secondary">{loadCars.length} VIN{loadCars.length === 1 ? "" : "s"}</Badge>
+                          <span className="text-sm font-medium">{loadCars.length}</span>
                         ) : (
-                          <span className="text-xs text-muted-foreground">{l.vehicleInfo || "—"}</span>
+                          <div>
+                            <span className="text-sm font-medium">{l.vehicleInfo?.match(/\d+/)?.[0] || "—"}</span>
+                            {missingVins && <p className="text-[8px] text-red-600 font-semibold uppercase leading-tight whitespace-nowrap">VINs Pending</p>}
+                          </div>
                         )}
                       </TableCell>
                       <TableCell className="text-sm">{driver?.name || "—"}</TableCell>
-                      <TableCell className="text-sm tabular-nums">{l.pickupDate}</TableCell>
+                      <TableCell className="text-sm tabular-nums">{l.pickupDate ? format(new Date(`${l.pickupDate}T12:00:00`), "MM-dd") : "—"}</TableCell>
+                      <TableCell className="text-sm tabular-nums">{l.deliveryDate ? format(new Date(`${l.deliveryDate}T12:00:00`), "MM-dd") : "—"}</TableCell>
                       <TableCell className="tabular-nums font-medium">${l.price.toLocaleString()}</TableCell>
                       <TableCell>
                         <Badge variant="secondary" className={statusColor[l.status]}>{formatStatus(l.status)}</Badge>
                       </TableCell>
                       <TableCell onClick={(e) => e.stopPropagation()}>
-                        <div className="flex gap-1 flex-wrap">
-                          {nextStatus[l.status] && (
-                            <Button size="sm" variant="outline" onClick={() => updateStatus(l.id, nextStatus[l.status])}>
-                              → {formatStatus(nextStatus[l.status])}
-                            </Button>
-                          )}
-                          {l.status !== "delivered" && l.status !== "cancelled" && (
-                            <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => updateStatus(l.id, "cancelled")}>
-                              Cancel
-                            </Button>
-                          )}
-                        </div>
+                        {nextStatus[l.status] && (
+                          <Button size="sm" variant="outline" onClick={() => updateStatus(l.id, nextStatus[l.status])}>
+                            → {formatStatus(nextStatus[l.status])}
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   );
@@ -656,6 +784,7 @@ function LoadEditDialog({
   const [customer, setCustomer] = useState(load.customer);
   const [pickup, setPickup] = useState(load.pickupLocation);
   const [delivery, setDelivery] = useState(load.deliveryLocation);
+  const [editStatus, setEditStatus] = useState<LoadStatus>(load.status);
   const [notes, setNotes] = useState(load.notes);
   const [vinInput, setVinInput] = useState("");
   const [pendingVins, setPendingVins] = useState<PendingCar[]>([]);
@@ -724,21 +853,52 @@ function LoadEditDialog({
   };
 
   const handleSave = () => {
+    const today = new Date().toISOString().split("T")[0];
+    const newDriverId = driverId || undefined;
     const updated: Load = {
       ...load,
       customer,
       pickupLocation: pickup,
       deliveryLocation: delivery,
+      status: editStatus,
+      deliveryDate: editStatus === "delivered" ? (load.deliveryDate || today) : "",
       price: Number(price) || 0,
-      driverId: driverId || undefined,
+      driverId: newDriverId,
       notes,
     };
+
+    // Update linked cars when status changes
+    if (editStatus !== load.status && updated.carIds?.length) {
+      const allCars = getCars();
+      const updatedCars = allCars.map((car) => {
+        if (!updated.carIds!.includes(car.id)) return car;
+        if (editStatus === "delivered") return { ...car, status: "delivered" as const, deliveredDate: today };
+        if (editStatus === "in_transit") return { ...car, status: "in_transit" as const };
+        if (editStatus === "cancelled" || editStatus === "booked") return { ...car, status: "at_shop" as const };
+        return car;
+      });
+      saveCars(updatedCars);
+    }
+
+    // Sync driver changes back to Planning Board
+    if (newDriverId !== load.driverId) {
+      const slots = getPlanningSlots();
+      const linkedSlot = slots.find((s) => s.loadId === load.id);
+      if (linkedSlot) {
+        savePlanningSlots(slots.map((s) =>
+          s.id === linkedSlot.id
+            ? { ...s, driverId: newDriverId, confirmed: !newDriverId ? false : s.confirmed }
+            : s,
+        ));
+      }
+    }
+
     onSave(updated, []);
   };
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" onOpenAutoFocus={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle>{load.referenceNumber}</DialogTitle>
         </DialogHeader>
@@ -763,9 +923,10 @@ function LoadEditDialog({
             </div>
             <div>
               <Label>Driver</Label>
-              <Select value={driverId} onValueChange={setDriverId}>
-                <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
+              <Select value={driverId || "unassigned"} onValueChange={(v) => setDriverId(v === "unassigned" ? "" : v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
                   {drivers.filter((d) => d.status === "active").map((d) => (
                     <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
                   ))}
@@ -774,13 +935,16 @@ function LoadEditDialog({
             </div>
             <div>
               <Label>Status</Label>
-              <div className="flex items-center h-10">
-                <Badge variant="secondary" className={statusColor[load.status]}>{formatStatus(load.status)}</Badge>
-              </div>
-            </div>
-            <div className="sm:col-span-2">
-              <Label>Notes</Label>
-              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
+              <Select value={editStatus} onValueChange={(v) => setEditStatus(v as LoadStatus)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="booked">Booked</SelectItem>
+                  <SelectItem value="dispatched">Dispatched</SelectItem>
+                  <SelectItem value="in_transit">In Transit</SelectItem>
+                  <SelectItem value="delivered">Delivered</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -868,6 +1032,11 @@ function LoadEditDialog({
                 </div>
               )}
             </div>
+          </div>
+
+          <div>
+            <Label>Notes</Label>
+            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
           </div>
 
           <div className="flex justify-end gap-2 pt-2 border-t">

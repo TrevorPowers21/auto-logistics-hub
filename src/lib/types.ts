@@ -221,5 +221,6 @@ export interface PlanningSlot {
   deliveryLocation?: string;
   carCount?: number;
   confirmed: boolean;          // false = tentative, true = locked in
+  loadId?: string;             // linked Load ID once finalized
   notes?: string;
 }

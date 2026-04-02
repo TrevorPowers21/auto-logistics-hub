@@ -5,7 +5,8 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Legend, Cell,
 } from "recharts";
-import { Driver, DriverBoardEntry } from "@/lib/types";
+import { Driver, DriverBoardEntry, Load } from "@/lib/types";
+import { getLocations } from "@/lib/store";
 import { normalizeBoardStops, getBoardPayTotal, getBoardTotals } from "@/lib/driver-recap";
 import {
   addDays, addMonths, format, startOfWeek, startOfMonth,
@@ -175,10 +176,12 @@ function ChartTooltip({ active, payload, label, valueFormatter }: {
 export function DriverAnalyticsTab({
   boards,
   drivers,
+  loads,
   referenceDate,
 }: {
   boards: DriverBoardEntry[];
   drivers: Driver[];
+  loads: Load[];
   referenceDate: string;
 }) {
   const [period, setPeriod] = useState<Period>("week");
@@ -223,10 +226,33 @@ export function DriverAnalyticsTab({
     [driverStats],
   );
 
-  // Completed vs Split per driver
+  // Customer leaderboard — cars and revenue by customer in this period
+  const customerLeaderboard = useMemo(() => {
+    const dateSet = new Set(range.dates);
+    const locs = getLocations();
+    const periodLoads = loads.filter((l) => l.pickupDate && dateSet.has(l.pickupDate));
+    const custMap = new Map<string, { name: string; cars: number; revenue: number }>();
+    for (const l of periodLoads) {
+      const code = l.customer || "Unknown";
+      // Resolve to full name
+      const loc = locs.find((loc) => loc.code === code) || locs.find((loc) => loc.name === code);
+      const name = loc ? loc.name : code;
+      const existing = custMap.get(name) || { name, cars: 0, revenue: 0 };
+      // Car count: VINs if available, otherwise parse from vehicleInfo
+      const carCount = l.carIds?.length || Number(l.vehicleInfo?.match(/\d+/)?.[0]) || 0;
+      existing.cars += carCount;
+      existing.revenue += l.price || 0;
+      custMap.set(name, existing);
+    }
+    return Array.from(custMap.values())
+      .sort((a, b) => b.cars - a.cars || b.revenue - a.revenue)
+      .slice(0, 15);
+  }, [loads, range.dates]);
+
+  // Keep for backwards compat reference
   const completedSplitData = useMemo(() =>
     driverStats.map((r) => ({
-      name: r.driver.name.split(" ")[0], // first name for brevity
+      name: r.driver.name.split(" ")[0],
       Completed: r.completedCars,
       Split: r.heldCars,
     })),
@@ -306,8 +332,12 @@ export function DriverAnalyticsTab({
         <SummaryCard label="Completed" value={totals.completedCars} accent="text-emerald-600"
           sub={totals.totalCars > 0 ? `${Math.round((totals.completedCars / totals.totalCars) * 100)}%` : undefined}
         />
-        <SummaryCard label="Split" value={totals.heldCars} accent="text-amber-600"
-          sub={totals.totalCars > 0 ? `${Math.round((totals.heldCars / totals.totalCars) * 100)}%` : undefined}
+        <SummaryCard label="Revenue" accent="text-emerald-600"
+          value={(() => {
+            const dateSet = new Set(range.dates);
+            const rev = loads.filter((l) => l.pickupDate && dateSet.has(l.pickupDate)).reduce((s, l) => s + (l.price || 0), 0);
+            return rev > 0 ? `$${rev.toLocaleString()}` : "—";
+          })()}
         />
         <SummaryCard
           label="Total Pay"
@@ -393,25 +423,38 @@ export function DriverAnalyticsTab({
               </CardContent>
             </Card>
 
-            {/* Completed vs Split */}
+            {/* Customer Leaderboard */}
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-base">Completed vs Split</CardTitle>
+                <CardTitle className="text-base">Customer Leaderboard</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="h-[240px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={completedSplitData} barSize={20}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                      <XAxis dataKey="name" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} allowDecimals={false} />
-                      <Tooltip content={<ChartTooltip valueFormatter={(v) => `${v} cars`} />} />
-                      <Legend wrapperStyle={{ fontSize: 12, paddingTop: 12 }} />
-                      <Bar dataKey="Completed" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
-                      <Bar dataKey="Split" stackId="a" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
+              <CardContent className="p-0">
+                {customerLeaderboard.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-8">No loads in this period</p>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="px-4 py-2 text-left font-medium text-muted-foreground">#</th>
+                        <th className="px-4 py-2 text-left font-medium text-muted-foreground">Customer</th>
+                        <th className="px-4 py-2 text-right font-medium text-muted-foreground">Cars</th>
+                        <th className="px-4 py-2 text-right font-medium text-muted-foreground">Revenue</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {customerLeaderboard.map((row, i) => (
+                        <tr key={row.name} className="border-b last:border-0 hover:bg-muted/30">
+                          <td className="px-4 py-2 text-muted-foreground tabular-nums">{i + 1}</td>
+                          <td className="px-4 py-2 font-medium">{row.name}</td>
+                          <td className="px-4 py-2 text-right tabular-nums font-semibold">{row.cars}</td>
+                          <td className="px-4 py-2 text-right tabular-nums text-emerald-700">
+                            {row.revenue > 0 ? `$${row.revenue.toLocaleString()}` : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </CardContent>
             </Card>
           </div>

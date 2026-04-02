@@ -34,9 +34,9 @@ import {
   sanitizeBoardStops,
   formatRecapHeadingShort,
 } from "@/lib/driver-recap";
-import { generateId, getLocations, getAddresses, getDriverBoards, getDrivers, getPlanningSlots, saveDriverBoards, saveLocations, saveAddresses } from "@/lib/store";
+import { generateId, getLocations, getAddresses, getDriverBoards, getDrivers, getLoads, getPlanningSlots, saveDriverBoards, saveLocations, saveAddresses } from "@/lib/store";
 import { Address, Driver, DriverBoardEntry, DriverBoardStop, LocationProfile, PlanningSlot } from "@/lib/types";
-import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, Download, Plus, Save } from "lucide-react";
+import { Ban, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, Download, Plus, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { addDays, format, startOfWeek, addWeeks } from "date-fns";
 
@@ -54,6 +54,7 @@ type DriverSheetRow = {
   stops: DriverBoardStop[];
   carriedOver: CarriedOverStop[]; // overnight holds from previous day
   fromPlanning: boolean; // true if stops came from Planning Board (not yet saved)
+  offNotes?: string; // set when driver is marked off on planning board
   totalCars: number;
   completedCars: number;
   heldCars: number;
@@ -89,9 +90,14 @@ export default function DriverRecapPage() {
     return format(d, "yyyy-MM-dd");
   }, [date]);
 
+  // Check if a driver is marked off on the planning board for a given date
+  const isDriverOff = (driverId: string, forDate: string): PlanningSlot | undefined => {
+    return planningSlots.find((s) => s.driverId === driverId && s.date === forDate && s.loadSummary === "OFF");
+  };
+
   // Convert planning slots into board stops when no board entry exists
   const planningStopsForDriver = (driverId: string, forDate: string): DriverBoardStop[] => {
-    const driverSlots = planningSlots.filter((s) => s.driverId === driverId && s.date === forDate);
+    const driverSlots = planningSlots.filter((s) => s.driverId === driverId && s.date === forDate && s.loadSummary !== "OFF");
     if (driverSlots.length === 0) return [];
     return driverSlots.map((slot) => ({
       id: `plan-${slot.id}`,
@@ -112,6 +118,7 @@ export default function DriverRecapPage() {
 
     const rows = activeDrivers.map((driver) => {
       const board = boards.find((e) => e.driverId === driver.id && e.date === date);
+      const offSlot = isDriverOff(driver.id, date);
 
       // If no board entry, check for planning data or carryovers to auto-save
       let stops: DriverBoardStop[];
@@ -168,7 +175,7 @@ export default function DriverRecapPage() {
           fromDate: prevDate,
         }));
 
-      return { id: driver.id, driver, board, stops, carriedOver, fromPlanning, ...totals };
+      return { id: driver.id, driver, board, stops, carriedOver, fromPlanning, offNotes: offSlot ? (offSlot.notes || "") : undefined, ...totals };
     });
 
     // Batch auto-save outside render
@@ -324,10 +331,32 @@ export default function DriverRecapPage() {
                     </PopoverContent>
                   </Popover>
                 </div>
-                <Button variant="outline" onClick={handleExportDay} disabled={dayTotals.totalCars === 0}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Export Day
+                <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={handleExportDay} disabled={dayTotals.totalCars === 0}>
+                  <Download className="mr-1 h-3.5 w-3.5" />
+                  Export
                 </Button>
+                <Button size="sm"
+                  onClick={() => {
+                    // Check for missing pay
+                    const missingPay = driverRows.filter((r) =>
+                      r.stops.length > 0 && r.stops.some((s) =>
+                        s.carCount > 0 && s.payRatePerCar === undefined && r.driver.payRatePerCar === undefined
+                      )
+                    );
+                    if (missingPay.length > 0) {
+                      toast("Missing driver pay", {
+                        description: `${missingPay.map((r) => r.driver.name).join(", ")} — set pay rate per car before submitting.`,
+                      });
+                      return;
+                    }
+                    toast("Recap submitted", { description: `${format(new Date(`${date}T12:00:00`), "EEE, MMM d")} — ${dayTotals.totalCars} cars, ${dayTotals.totalPay !== null ? "$" + dayTotals.totalPay.toLocaleString("en-US", { minimumFractionDigits: 2 }) : "no pay data"}` });
+                  }}
+                  disabled={dayTotals.totalCars === 0}
+                >
+                  Submit Recap
+                </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -448,21 +477,24 @@ export default function DriverRecapPage() {
                     {weeklyRows.map((row) => (
                       <TableRow key={row.driver.id}>
                         <TableCell className="font-medium">{row.driver.name}</TableCell>
-                        {row.dayCars.map((cars, i) => (
-                          <TableCell
-                            key={weekDates[i]}
-                            className="text-center tabular-nums cursor-pointer hover:bg-muted/60"
-                            onClick={() => {
-                              setDate(weekDates[i]);
-                            }}
-                          >
-                            {cars > 0 ? (
-                              <span className="font-medium">{cars}</span>
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
-                          </TableCell>
-                        ))}
+                        {row.dayCars.map((cars, i) => {
+                          const off = isDriverOff(row.driver.id, weekDates[i]);
+                          return (
+                            <TableCell
+                              key={weekDates[i]}
+                              className="text-center tabular-nums cursor-pointer hover:bg-muted/60"
+                              onClick={() => { setDate(weekDates[i]); }}
+                            >
+                              {off ? (
+                                <span className="text-[10px] text-gray-400 font-medium">OFF</span>
+                              ) : cars > 0 ? (
+                                <span className="font-medium">{cars}</span>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                          );
+                        })}
                         <TableCell className="text-right tabular-nums font-semibold">
                           {row.totalCars}
                         </TableCell>
@@ -491,8 +523,13 @@ export default function DriverRecapPage() {
                 value={weeklyRows.reduce((s, r) => s + r.totalCars, 0)}
               />
               <MetricCard
-                label="Drivers Active"
-                value={weeklyRows.length}
+                label="Total Revenue"
+                accent="text-emerald-600"
+                value={(() => {
+                  const weekLoads = getLoads().filter((l) => l.pickupDate && weekDates.includes(l.pickupDate));
+                  const rev = weekLoads.reduce((s, l) => s + (l.price || 0), 0);
+                  return rev > 0 ? `$${rev.toLocaleString()}` : "—";
+                })()}
               />
               <MetricCard
                 label="Week Total Pay"
@@ -509,7 +546,7 @@ export default function DriverRecapPage() {
         </TabsContent>
         {/* ───────────── ANALYTICS TAB ───────────── */}
         <TabsContent value="analytics" className="space-y-6 mt-0">
-          <DriverAnalyticsTab boards={boards} drivers={drivers} referenceDate={date} />
+          <DriverAnalyticsTab boards={boards} drivers={drivers} loads={getLoads()} referenceDate={date} />
         </TabsContent>
       </Tabs>
     </div>
@@ -568,19 +605,31 @@ function DriverLoadTable({
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="flex items-center gap-2">
-                <CardTitle className="text-base">{row.driver.name}</CardTitle>
-                {row.fromPlanning && (
+                <CardTitle className={`text-base ${row.offNotes !== undefined ? "text-gray-500" : ""}`}>{row.driver.name}</CardTitle>
+                {row.offNotes !== undefined && (
+                  <Badge variant="secondary" className="bg-gray-300 text-gray-700 text-[10px]"><Ban className="h-2.5 w-2.5 mr-0.5" /> Off</Badge>
+                )}
+                {row.fromPlanning && row.offNotes === undefined && (
                   <Badge variant="secondary" className="bg-blue-100 text-blue-700 text-[10px]">From Plan</Badge>
+                )}
+                {row.offNotes === undefined && row.stops.length > 0 && row.stops.some((s) => s.carCount > 0 && s.payRatePerCar === undefined) && row.driver.payRatePerCar === undefined && (
+                  <Badge variant="secondary" className="bg-red-100 text-red-700 text-[10px]">No Pay Rate</Badge>
                 )}
               </div>
               <CardDescription className="mt-0.5">
-                {row.totalCars} cars
-                {row.completedCars > 0 && ` · ${row.completedCars} completed`}
-                {row.heldCars > 0 && ` · ${row.heldCars} split`}
-                {row.fromPlanning && " · edit & save to confirm"}
+                {row.offNotes !== undefined ? (
+                  <span className="text-gray-500">{row.offNotes || "No work scheduled"}</span>
+                ) : (
+                  <>
+                    {row.totalCars} cars
+                    {row.completedCars > 0 && ` · ${row.completedCars} completed`}
+                    {row.heldCars > 0 && ` · ${row.heldCars} split`}
+                    {row.fromPlanning && " · edit & save to confirm"}
+                  </>
+                )}
               </CardDescription>
             </div>
-            {row.totalPay !== null ? (
+            {row.offNotes !== undefined ? null : row.totalPay !== null ? (
               <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 shrink-0">
                 ${row.totalPay.toLocaleString("en-US", { minimumFractionDigits: 2 })}
               </Badge>
@@ -607,52 +656,61 @@ function DriverLoadTable({
             </div>
           )}
 
-          {/* Clickable stop rows */}
-          <div className="space-y-1.5">
-            {stops.length > 0 ? stops.map((stop, index) => {
-              const stopPay = getStopPay(stop, payRate);
-              return (
-                <div
-                  key={stop.id}
-                  className="flex items-center gap-3 rounded-lg border px-3 py-2.5 cursor-pointer hover:bg-muted/40 transition-colors"
-                  onClick={() => setEditingStopIndex(index)}
-                >
-                  <span className="tabular-nums font-bold text-sm w-6 text-center">{stop.carCount}</span>
-                  <div className="flex-1 min-w-0 text-sm">
-                    {stop.customer && (
-                      <span className="text-xs text-muted-foreground mr-1">
-                        {locationOptions.find((l) => l.code === stop.customer)?.name || stop.customer}:
-                      </span>
-                    )}
-                    <span>{stop.pickupLocation || "?"}</span>
-                    <span className="text-muted-foreground mx-1">→</span>
-                    <span>{stop.dropoffLocation || "?"}</span>
-                  </div>
-                  <Badge
-                    variant="secondary"
-                    className={`text-[10px] shrink-0 ${
-                      stop.status === "completed" ? "bg-emerald-100 text-emerald-700"
-                      : stop.status === "split" ? "bg-purple-100 text-purple-700"
-                      : "bg-amber-100 text-amber-700"
-                    }`}
-                  >
-                    {stop.status === "completed" ? "Done" : stop.status === "split" ? "Split" : "O/N"}
-                  </Badge>
-                  {stopPay !== null && (
-                    <span className="tabular-nums text-xs font-medium text-emerald-700 shrink-0">
-                      ${stopPay.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                    </span>
-                  )}
-                </div>
-              );
-            }) : (
-              <p className="text-sm text-muted-foreground text-center py-4">No loads entered.</p>
-            )}
-          </div>
+          {row.offNotes !== undefined ? (
+            <div className="flex items-center justify-center gap-2 py-6 text-gray-400">
+              <Ban className="h-4 w-4" />
+              <span className="text-sm font-medium">Off{row.offNotes ? ` — ${row.offNotes}` : ""}</span>
+            </div>
+          ) : (
+            <>
+              {/* Clickable stop rows */}
+              <div className="space-y-1.5">
+                {stops.length > 0 ? stops.map((stop, index) => {
+                  const stopPay = getStopPay(stop, payRate);
+                  return (
+                    <div
+                      key={stop.id}
+                      className="flex items-center gap-3 rounded-lg border px-3 py-2.5 cursor-pointer hover:bg-muted/40 transition-colors"
+                      onClick={() => setEditingStopIndex(index)}
+                    >
+                      <span className="tabular-nums font-bold text-sm w-6 text-center">{stop.carCount}</span>
+                      <div className="flex-1 min-w-0 text-sm">
+                        {stop.customer && (
+                          <span className="text-xs text-muted-foreground mr-1">
+                            {locationOptions.find((l) => l.code === stop.customer)?.name || stop.customer}:
+                          </span>
+                        )}
+                        <span>{stop.pickupLocation || "?"}</span>
+                        <span className="text-muted-foreground mx-1">→</span>
+                        <span>{stop.dropoffLocation || "?"}</span>
+                      </div>
+                      <Badge
+                        variant="secondary"
+                        className={`text-[10px] shrink-0 ${
+                          stop.status === "completed" ? "bg-emerald-100 text-emerald-700"
+                          : stop.status === "split" ? "bg-purple-100 text-purple-700"
+                          : "bg-amber-100 text-amber-700"
+                        }`}
+                      >
+                        {stop.status === "completed" ? "Done" : stop.status === "split" ? "Split" : "O/N"}
+                      </Badge>
+                      {stopPay !== null && (
+                        <span className="tabular-nums text-xs font-medium text-emerald-700 shrink-0">
+                          ${stopPay.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                        </span>
+                      )}
+                    </div>
+                  );
+                }) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">No loads entered.</p>
+                )}
+              </div>
 
-          <Button variant="outline" size="sm" className="w-full" onClick={addStop}>
-            <Plus className="h-3.5 w-3.5 mr-1" /> Add Load
-          </Button>
+              <Button variant="outline" size="sm" className="w-full" onClick={addStop}>
+                <Plus className="h-3.5 w-3.5 mr-1" /> Add Load
+              </Button>
+            </>
+          )}
         </CardContent>
       </Card>
 
