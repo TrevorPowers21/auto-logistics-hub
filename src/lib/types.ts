@@ -3,12 +3,17 @@ export type DriverStatus = "active" | "inactive" | "on_leave";
 export interface Driver {
   id: string;
   name: string;
+  identifier?: string; // short code from VehicleHaul (e.g. "78", "65")
   phone: string;
   email: string;
   licenseNumber: string;
+  licenseState?: string;
   licenseExpiry: string;
+  mcNumber?: string;
+  dotNumber?: string;
   status: DriverStatus;
   hireDate: string;
+  deactivatedDate?: string;
   totalMiles: number;
   totalEarnings: number;
   assignedVehicleId?: string;
@@ -18,6 +23,7 @@ export interface Driver {
   timezone?: string;
   lastSyncedAt?: string;
   payRatePerCar?: number; // default pay rate per car moved
+  notes?: string;
 }
 
 export type DriverDailyStatus = "available" | "en_route" | "delivered" | "delay" | "off_duty";
