@@ -323,5 +323,50 @@ export function generateId(): string {
 export async function hydrateAll(): Promise<void> {
   if (!supabase) return;
   const keys = Object.keys(TABLE_MAP) as StoreKey[];
-  await Promise.all(keys.map((k) => hydrateKey(k)));
+  await Promise.all([
+    ...keys.map((k) => hydrateKey(k)),
+    hydrateAppSettings(),
+  ]);
+}
+
+async function hydrateAppSettings(): Promise<void> {
+  if (!supabase) return;
+  try {
+    const { data, error } = await supabase.from("app_settings").select("*");
+    if (error || !data) return;
+    for (const row of data as Array<{ key: string; value: string }>) {
+      localStorage.setItem(`transport_setting_${row.key}`, row.value);
+    }
+    window.dispatchEvent(new CustomEvent("store-update", { detail: "settings" }));
+  } catch { /* ignore — table may not exist */ }
+}
+
+// ─── Auto-sync (poll Supabase for cross-device updates) ─────────────────────
+
+let syncInterval: ReturnType<typeof setInterval> | null = null;
+
+/** Force re-hydration of all keys from Supabase */
+export async function refreshFromSupabase(): Promise<void> {
+  if (!supabase) return;
+  // Clear hydration flags so hydrateKey actually fetches
+  hydrated.clear();
+  hydrating.clear();
+  await hydrateAll();
+  saveAppSetting("last_auto_sync", new Date().toISOString());
+}
+
+/** Start polling Supabase every `intervalMs` (default 30s) for fresh data */
+export function startAutoSync(intervalMs = 30_000): void {
+  if (syncInterval) return; // already running
+  syncInterval = setInterval(() => {
+    refreshFromSupabase().catch((err) => console.warn("Auto-sync failed:", err));
+  }, intervalMs);
+}
+
+/** Stop the auto-sync polling */
+export function stopAutoSync(): void {
+  if (syncInterval) {
+    clearInterval(syncInterval);
+    syncInterval = null;
+  }
 }

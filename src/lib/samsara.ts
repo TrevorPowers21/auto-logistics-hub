@@ -1,4 +1,4 @@
-import { generateId } from "@/lib/store";
+import { generateId, getAppSetting, saveAppSetting } from "@/lib/store";
 import { Driver, DriverStatus, Vehicle } from "@/lib/types";
 import { decodeVin } from "@/lib/vin";
 
@@ -83,14 +83,12 @@ export interface SamsaraFleetSyncResult {
   endCursor?: string;
 }
 
-const SAMSARA_TOKEN_KEY = "transport_setting_samsara_token";
-
 export async function getSavedSamsaraToken() {
-  return localStorage.getItem(SAMSARA_TOKEN_KEY) || "";
+  return getAppSetting("samsara_token") || "";
 }
 
 export async function saveSamsaraToken(token: string) {
-  localStorage.setItem(SAMSARA_TOKEN_KEY, token.trim());
+  saveAppSetting("samsara_token", token.trim());
 }
 
 export function isSamsaraConfigured(token?: string | null) {
