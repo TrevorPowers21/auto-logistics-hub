@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
-import { getAppSetting, refreshFromSupabase } from "@/lib/store";
+import { getAppSetting, getDrivers, getLoads, refreshFromSupabase } from "@/lib/store";
+import { Truck, Users } from "lucide-react";
 
 const routeLabels: Record<string, string> = {
   "/": "Dashboard",
@@ -56,6 +57,35 @@ function SyncIndicator() {
   );
 }
 
+function QuickStats() {
+  const [stats, setStats] = useState({ loads: 0, drivers: 0 });
+
+  useEffect(() => {
+    const update = () => {
+      const loads = getLoads().filter((l) => ["booked", "dispatched", "in_transit"].includes(l.status)).length;
+      const drivers = getDrivers().filter((d) => d.status === "active").length;
+      setStats({ loads, drivers });
+    };
+    update();
+    window.addEventListener("store-update", update);
+    return () => window.removeEventListener("store-update", update);
+  }, []);
+
+  return (
+    <div className="hidden sm:flex items-center gap-3 text-xs text-muted-foreground">
+      <span className="flex items-center gap-1">
+        <Truck className="h-3 w-3" />
+        <span className="tabular-nums font-medium">{stats.loads}</span> active
+      </span>
+      <span className="h-3 w-px bg-border" />
+      <span className="flex items-center gap-1">
+        <Users className="h-3 w-3" />
+        <span className="tabular-nums font-medium">{stats.drivers}</span> drivers
+      </span>
+    </div>
+  );
+}
+
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const pageTitle = routeLabels[location.pathname] ?? "Monroe Auto Transport";
@@ -65,11 +95,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="min-h-screen flex w-full overflow-x-hidden">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
-          <header className="h-14 flex items-center border-b px-4 bg-card shrink-0 gap-3">
+          <header className="h-12 flex items-center border-b px-4 bg-card shrink-0 gap-3">
             <SidebarTrigger className="shrink-0" />
             <div className="h-4 w-px bg-border" />
             <span className="text-sm font-semibold truncate">{pageTitle}</span>
-            <div className="ml-auto">
+            <div className="ml-auto flex items-center gap-4">
+              <QuickStats />
               <SyncIndicator />
             </div>
           </header>

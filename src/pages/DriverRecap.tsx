@@ -630,7 +630,7 @@ function DriverLoadTable({
               </CardDescription>
             </div>
             {row.offNotes !== undefined ? null : row.totalPay !== null ? (
-              <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 shrink-0">
+              <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 shrink-0">
                 ${row.totalPay.toLocaleString("en-US", { minimumFractionDigits: 2 })}
               </Badge>
             ) : payRate !== undefined ? (
@@ -650,7 +650,7 @@ function DriverLoadTable({
                   <span className="text-amber-900">
                     {co.carCount} car{co.carCount === 1 ? "" : "s"} at SHOP → {co.dropoffLocation || "TBD"}
                   </span>
-                  <Badge variant="secondary" className="bg-amber-100 text-amber-700 text-xs">Carryover</Badge>
+                  <Badge variant="secondary" className="bg-amber-100 text-amber-800 text-xs">Carryover</Badge>
                 </div>
               ))}
             </div>
@@ -687,9 +687,9 @@ function DriverLoadTable({
                       <Badge
                         variant="secondary"
                         className={`text-[10px] shrink-0 ${
-                          stop.status === "completed" ? "bg-emerald-100 text-emerald-700"
-                          : stop.status === "split" ? "bg-purple-100 text-purple-700"
-                          : "bg-amber-100 text-amber-700"
+                          stop.status === "completed" ? "bg-emerald-100 text-emerald-800"
+                          : stop.status === "split" ? "bg-violet-100 text-violet-800"
+                          : "bg-amber-100 text-amber-800"
                         }`}
                       >
                         {stop.status === "completed" ? "Done" : stop.status === "split" ? "Split" : "O/N"}

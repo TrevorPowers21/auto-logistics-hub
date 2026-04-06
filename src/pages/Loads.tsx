@@ -24,11 +24,11 @@ import { decodeVin } from "@/lib/vin";
 import { CalendarDays, Plus, Search, Filter, Truck, X } from "lucide-react";
 
 const statusColor: Record<LoadStatus, string> = {
-  booked: "bg-blue-100 text-blue-700",
-  dispatched: "bg-amber-100 text-amber-700",
-  in_transit: "bg-purple-100 text-purple-700",
-  delivered: "bg-emerald-100 text-emerald-700",
-  cancelled: "bg-red-100 text-red-700",
+  booked: "bg-blue-100 text-blue-800",
+  dispatched: "bg-amber-100 text-amber-800",
+  in_transit: "bg-violet-100 text-violet-800",
+  delivered: "bg-emerald-100 text-emerald-800",
+  cancelled: "bg-red-100 text-red-800",
 };
 
 const statusLabels: LoadStatus[] = ["booked", "dispatched", "in_transit", "delivered", "cancelled"];

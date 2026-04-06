@@ -329,10 +329,10 @@ export default function PlanningBoardPage() {
 
             {/* Unassigned work pool */}
             {day.unassigned.length > 0 && (
-              <Card className="border-amber-300 bg-amber-100">
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-amber-300 bg-amber-200/50">
+              <Card className="border-amber-200 bg-amber-50/80">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-amber-200 bg-amber-100/60">
                   <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
-                  <span className="text-sm font-medium text-amber-800">Needs Driver ({day.unassigned.length})</span>
+                  <span className="text-sm font-semibold text-amber-800">Needs Driver ({day.unassigned.length})</span>
                 </div>
                 <CardContent className="p-2 space-y-1.5">
                   {day.unassigned.map((slot) => (
@@ -378,7 +378,7 @@ export default function PlanningBoardPage() {
                       {isOff ? (
                         <Badge variant="secondary" className="bg-gray-300 text-gray-700 text-[10px]"><Ban className="h-2.5 w-2.5 mr-0.5" /> Off</Badge>
                       ) : row.slots.length === 0 ? (
-                        <Badge variant="secondary" className="bg-amber-100 text-amber-700 text-[10px]">Open</Badge>
+                        <Badge variant="secondary" className="bg-amber-100 text-amber-800 text-[10px]">Open</Badge>
                       ) : (
                         <Badge variant="secondary" className="text-[10px]">{driverCarTotal} cars</Badge>
                       )}
@@ -431,8 +431,8 @@ export default function PlanningBoardPage() {
                         key={slot.id}
                         className={`rounded-lg border-2 p-2.5 cursor-pointer transition-colors ${
                           slot.confirmed
-                            ? "border-emerald-400 bg-emerald-100 hover:bg-emerald-150"
-                            : "border-blue-400 bg-blue-50 hover:bg-blue-100"
+                            ? "border-emerald-500 bg-emerald-50 hover:bg-emerald-100"
+                            : "border-slate-300 bg-white hover:bg-slate-50"
                         }`}
                         onClick={() => setEditingSlot(slot)}
                       >
@@ -472,11 +472,11 @@ export default function PlanningBoardPage() {
                             )}
                           </div>
                           {slot.confirmed ? (
-                            <Badge variant="secondary" className="bg-emerald-200 text-emerald-800 text-[10px] shrink-0">
+                            <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 text-[10px] shrink-0">
                               <Check className="h-2.5 w-2.5 mr-0.5" /> Set
                             </Badge>
                           ) : (
-                            <Badge variant="secondary" className="bg-blue-200 text-blue-800 text-[10px] shrink-0">Planned</Badge>
+                            <Badge variant="secondary" className="bg-slate-100 text-slate-600 text-[10px] shrink-0">Planned</Badge>
                           )}
                         </div>
                         {slot.notes && !slot.loadId && <p className="text-xs text-muted-foreground mt-1 italic">{slot.notes}</p>}

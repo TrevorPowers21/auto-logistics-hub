@@ -7,16 +7,17 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { getDrivers, saveDrivers, generateId, getVehicles } from "@/lib/store";
 import { useStoreData } from "@/hooks/use-store";
 import { Driver, DriverStatus } from "@/lib/types";
 import { toast } from "@/components/ui/sonner";
-import { Plus, Search, Users } from "lucide-react";
+import { AlertTriangle, Plus, Search, Users } from "lucide-react";
 
 const statusBadge: Record<DriverStatus, string> = {
-  active: "bg-emerald-100 text-emerald-700",
+  active: "bg-emerald-100 text-emerald-800",
   inactive: "bg-gray-100 text-gray-600",
-  on_leave: "bg-amber-100 text-amber-700",
+  on_leave: "bg-amber-100 text-amber-800",
 };
 
 const statusLabel: Record<DriverStatus, string> = {
@@ -42,6 +43,10 @@ export default function DriversPage() {
       d.phone.includes(search),
   );
 
+  // Flag drivers with licenses expiring in the next 60 days
+  const now = new Date();
+  const soonMs = 60 * 24 * 60 * 60 * 1000;
+
   const handleAdd = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
@@ -51,15 +56,18 @@ export default function DriversPage() {
       phone: fd.get("phone") as string,
       email: fd.get("email") as string,
       licenseNumber: fd.get("license") as string,
+      licenseState: (fd.get("licenseState") as string) || undefined,
       licenseExpiry: fd.get("licenseExpiry") as string,
       status: "active",
       hireDate: new Date().toISOString().split("T")[0],
       totalMiles: 0,
       totalEarnings: 0,
       payRatePerCar: fd.get("payRatePerCar") ? Number(fd.get("payRatePerCar")) : undefined,
+      notes: (fd.get("notes") as string) || undefined,
     };
     saveDrivers([...drivers, newDriver]);
     setAddOpen(false);
+    toast("Driver added", { description: `${newDriver.name} added to active roster.` });
   };
 
   const handleEditOpen = (driver: Driver) => {
@@ -77,18 +85,21 @@ export default function DriversPage() {
       phone: fd.get("phone") as string,
       email: fd.get("email") as string,
       licenseNumber: fd.get("license") as string,
+      licenseState: (fd.get("licenseState") as string) || editingDriver.licenseState,
       licenseExpiry: fd.get("licenseExpiry") as string,
       status: editStatus,
       payRatePerCar: fd.get("payRatePerCar") ? Number(fd.get("payRatePerCar")) : undefined,
+      notes: (fd.get("notes") as string) || undefined,
     };
     saveDrivers(drivers.map((d) => (d.id === editingDriver.id ? updated : d)));
     setEditingDriver(null);
+    toast("Driver updated");
   };
 
   const handleMarkInactive = (id: string) => {
-    saveDrivers(drivers.map((d) => (d.id === id ? { ...d, status: "inactive" as DriverStatus } : d)));
+    saveDrivers(drivers.map((d) => (d.id === id ? { ...d, status: "inactive" as DriverStatus, deactivatedDate: new Date().toISOString().split("T")[0] } : d)));
     setEditingDriver(null);
-    toast("Driver marked inactive", { description: "Driver has been moved to inactive status. Historical data is preserved." });
+    toast("Driver marked inactive", { description: "Historical data is preserved." });
   };
 
   return (
@@ -96,7 +107,9 @@ export default function DriversPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Drivers</h1>
-          <p className="text-muted-foreground text-sm mt-1">{drivers.length} total drivers</p>
+          <p className="text-muted-foreground text-sm mt-1">
+            {activeDrivers.length} active · {inactiveDrivers.length} inactive
+          </p>
         </div>
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild>
@@ -104,13 +117,13 @@ export default function DriversPage() {
               <Plus className="h-4 w-4 mr-1" /> Add Driver
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>Add New Driver</DialogTitle>
             </DialogHeader>
             <form key="add" onSubmit={handleAdd} className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2">
-                <div>
+                <div className="sm:col-span-2">
                   <Label>Full Name</Label>
                   <Input name="name" required />
                 </div>
@@ -120,24 +133,32 @@ export default function DriversPage() {
                 </div>
                 <div>
                   <Label>Email</Label>
-                  <Input name="email" type="email" required />
+                  <Input name="email" type="email" />
                 </div>
                 <div>
                   <Label>License #</Label>
-                  <Input name="license" required />
+                  <Input name="license" />
                 </div>
-                <div>
-                  <Label>License Expiry</Label>
-                  <Input name="licenseExpiry" type="date" required />
+                <div className="grid grid-cols-[60px_1fr] gap-2">
+                  <div>
+                    <Label>State</Label>
+                    <Input name="licenseState" placeholder="NY" maxLength={2} className="text-center uppercase" />
+                  </div>
+                  <div>
+                    <Label>Expiry</Label>
+                    <Input name="licenseExpiry" type="date" />
+                  </div>
                 </div>
                 <div>
                   <Label>Pay Rate ($/car)</Label>
                   <Input name="payRatePerCar" type="number" step="0.01" min="0" placeholder="e.g. 25.00" />
                 </div>
+                <div className="sm:col-span-2">
+                  <Label>Notes</Label>
+                  <Textarea name="notes" rows={2} placeholder="Special instructions, certifications, etc." />
+                </div>
               </div>
-              <Button type="submit" className="w-full">
-                Save Driver
-              </Button>
+              <Button type="submit" className="w-full">Save Driver</Button>
             </form>
           </DialogContent>
         </Dialog>
@@ -145,14 +166,14 @@ export default function DriversPage() {
 
       {/* Edit Driver Dialog */}
       <Dialog open={!!editingDriver} onOpenChange={(open) => !open && setEditingDriver(null)}>
-        <DialogContent>
+        <DialogContent className="max-w-lg" onOpenAutoFocus={(e) => e.preventDefault()}>
           <DialogHeader>
             <DialogTitle>Edit Driver</DialogTitle>
           </DialogHeader>
           {editingDriver && (
             <form onSubmit={handleEditSave} className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2">
-                <div>
+                <div className="sm:col-span-2">
                   <Label>Full Name</Label>
                   <Input name="name" defaultValue={editingDriver.name} required />
                 </div>
@@ -162,15 +183,21 @@ export default function DriversPage() {
                 </div>
                 <div>
                   <Label>Email</Label>
-                  <Input name="email" type="email" defaultValue={editingDriver.email} required />
+                  <Input name="email" type="email" defaultValue={editingDriver.email} />
                 </div>
                 <div>
                   <Label>License #</Label>
-                  <Input name="license" defaultValue={editingDriver.licenseNumber} required />
+                  <Input name="license" defaultValue={editingDriver.licenseNumber} />
                 </div>
-                <div>
-                  <Label>License Expiry</Label>
-                  <Input name="licenseExpiry" type="date" defaultValue={editingDriver.licenseExpiry} required />
+                <div className="grid grid-cols-[60px_1fr] gap-2">
+                  <div>
+                    <Label>State</Label>
+                    <Input name="licenseState" defaultValue={editingDriver.licenseState || ""} placeholder="NY" maxLength={2} className="text-center uppercase" />
+                  </div>
+                  <div>
+                    <Label>Expiry</Label>
+                    <Input name="licenseExpiry" type="date" defaultValue={editingDriver.licenseExpiry} />
+                  </div>
                 </div>
                 <div>
                   <Label>Pay Rate ($/car)</Label>
@@ -189,6 +216,10 @@ export default function DriversPage() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="sm:col-span-2">
+                  <Label>Notes</Label>
+                  <Textarea name="notes" rows={2} defaultValue={editingDriver.notes || ""} placeholder="Special instructions, certifications, etc." />
+                </div>
               </div>
               <div className="flex justify-between gap-3">
                 {editingDriver.status !== "inactive" && (
@@ -201,7 +232,7 @@ export default function DriversPage() {
                     Mark Inactive
                   </Button>
                 )}
-                <Button type="submit">Save Changes</Button>
+                <Button type="submit" className="ml-auto">Save Changes</Button>
               </div>
             </form>
           )}
@@ -222,9 +253,9 @@ export default function DriversPage() {
         <CardContent className="p-0">
           {filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <Users className="h-10 w-10 text-muted-foreground/40 mb-3" />
+              <Users className="h-10 w-10 text-muted-foreground/30 mb-3" />
               <p className="text-sm font-medium text-muted-foreground">
-                {search ? "No drivers match your search" : "No drivers yet"}
+                {search ? "No drivers match your search" : "No active drivers"}
               </p>
               {!search && (
                 <p className="text-xs text-muted-foreground mt-1">Add your first driver to get started.</p>
@@ -238,8 +269,6 @@ export default function DriversPage() {
                   <TableHead>Phone</TableHead>
                   <TableHead>License</TableHead>
                   <TableHead>Vehicle</TableHead>
-                  <TableHead>Miles</TableHead>
-                  <TableHead>Earnings</TableHead>
                   <TableHead>Pay Rate</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
@@ -247,20 +276,42 @@ export default function DriversPage() {
               <TableBody>
                 {filtered.map((d) => {
                   const vehicle = vehicles.find((v) => v.id === d.assignedVehicleId);
+                  const expiryDate = d.licenseExpiry ? new Date(d.licenseExpiry) : null;
+                  const isExpiring = expiryDate && (expiryDate.getTime() - now.getTime()) < soonMs && expiryDate.getTime() > now.getTime();
+                  const isExpired = expiryDate && expiryDate.getTime() < now.getTime();
+
                   return (
                     <TableRow
                       key={d.id}
-                      className="cursor-pointer hover:bg-muted/50"
+                      className="cursor-pointer hover:bg-muted/40 transition-colors"
                       onClick={() => handleEditOpen(d)}
                     >
-                      <TableCell className="font-medium">{d.name}</TableCell>
+                      <TableCell>
+                        <div>
+                          <span className="font-medium">{d.name}</span>
+                          {d.identifier && <span className="text-xs text-muted-foreground ml-1.5">#{d.identifier}</span>}
+                        </div>
+                      </TableCell>
                       <TableCell className="text-sm">{d.phone}</TableCell>
-                      <TableCell className="text-sm font-mono">{d.licenseNumber}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm font-mono">{d.licenseNumber || "—"}</span>
+                          {d.licenseState && <span className="text-[10px] text-muted-foreground">{d.licenseState}</span>}
+                          {isExpired && (
+                            <Badge variant="secondary" className="bg-red-100 text-red-700 text-[9px] ml-1">
+                              <AlertTriangle className="h-2.5 w-2.5 mr-0.5" />Expired
+                            </Badge>
+                          )}
+                          {isExpiring && !isExpired && (
+                            <Badge variant="secondary" className="bg-amber-100 text-amber-700 text-[9px] ml-1">
+                              <AlertTriangle className="h-2.5 w-2.5 mr-0.5" />Expiring
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell className="text-sm">
                         {vehicle ? `${vehicle.year} ${vehicle.make} ${vehicle.model}` : "—"}
                       </TableCell>
-                      <TableCell className="tabular-nums">{d.totalMiles.toLocaleString()}</TableCell>
-                      <TableCell className="tabular-nums">${d.totalEarnings.toLocaleString()}</TableCell>
                       <TableCell className="text-sm tabular-nums">
                         {d.payRatePerCar !== undefined ? `$${d.payRatePerCar}/car` : "—"}
                       </TableCell>
@@ -282,29 +333,28 @@ export default function DriversPage() {
       {inactiveDrivers.length > 0 && (
         <details className="group">
           <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground transition-colors list-none flex items-center gap-2">
-            <span className="text-xs">&#9654;</span>
-            <span className="group-open:hidden">Show {inactiveDrivers.length} inactive driver{inactiveDrivers.length === 1 ? "" : "s"}</span>
-            <span className="hidden group-open:inline">Hide inactive drivers</span>
+            <span className="text-xs group-open:rotate-90 transition-transform">&#9654;</span>
+            <span>{inactiveDrivers.length} inactive driver{inactiveDrivers.length === 1 ? "" : "s"}</span>
           </summary>
-          <Card className="mt-3 opacity-70">
+          <Card className="mt-3 opacity-60">
             <CardContent className="p-0">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Name</TableHead>
                     <TableHead>Phone</TableHead>
-                    <TableHead>Miles</TableHead>
-                    <TableHead>Earnings</TableHead>
+                    <TableHead>License</TableHead>
+                    <TableHead>Deactivated</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {inactiveDrivers.map((d) => (
-                    <TableRow key={d.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleEditOpen(d)}>
+                    <TableRow key={d.id} className="cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => handleEditOpen(d)}>
                       <TableCell className="font-medium">{d.name}</TableCell>
                       <TableCell className="text-sm">{d.phone}</TableCell>
-                      <TableCell className="tabular-nums">{d.totalMiles.toLocaleString()}</TableCell>
-                      <TableCell className="tabular-nums">${d.totalEarnings.toLocaleString()}</TableCell>
+                      <TableCell className="text-sm font-mono">{d.licenseNumber || "—"}</TableCell>
+                      <TableCell className="text-sm">{d.deactivatedDate || "—"}</TableCell>
                       <TableCell>
                         <Badge variant="secondary" className="bg-gray-100 text-gray-600">Inactive</Badge>
                       </TableCell>
