@@ -116,9 +116,15 @@ export default function DriverRecapPage() {
     return activeDrivers.map((driver) => {
       const offSlot = isDriverOff(driver.id, date);
 
-      // 1. ALWAYS derive base stops fresh from planning slots — never cache them.
-      // The planning slot is the single source of truth for customer/pickup/delivery.
-      const driverPlanSlots = planningSlots.filter((s) => s.driverId === driver.id && s.date === date && s.loadSummary !== "OFF");
+      // 1. Derive base stops from planning slots — but only those that are real
+      // (have a loadId). Unfinalized planning slots stay invisible to the recap
+      // until they become real loads.
+      const driverPlanSlots = planningSlots.filter((s) =>
+        s.driverId === driver.id &&
+        s.date === date &&
+        s.loadSummary !== "OFF" &&
+        s.loadId,
+      );
       const baseStops: DriverBoardStop[] = driverPlanSlots.map((s) => slotToStop(s, allLoads));
 
       // 2. Pull yesterday's overnight carryovers
