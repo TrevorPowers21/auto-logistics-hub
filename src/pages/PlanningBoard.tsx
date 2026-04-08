@@ -193,8 +193,21 @@ export default function PlanningBoardPage() {
   };
 
   const deleteSlot = (id: string) => {
+    const slot = allSlots.find((s) => s.id === id);
+    // If this slot is linked to a finalized Load, delete that Load and its cars too
+    if (slot?.loadId) {
+      const currentLoads = getLoads();
+      const linkedLoad = currentLoads.find((l) => l.id === slot.loadId);
+      saveLoads(currentLoads.filter((l) => l.id !== slot.loadId));
+      // Detach cars from the deleted load (don't delete the cars, just unlink)
+      if (linkedLoad?.carIds?.length) {
+        const currentCars = getCars();
+        saveCars(currentCars.map((c) => c.loadId === slot.loadId ? { ...c, loadId: undefined, status: "at_shop" } : c));
+      }
+    }
     savePlanningSlots(allSlots.filter((s) => s.id !== id));
     setEditingSlot(null);
+    toast("Load removed");
   };
 
   const assignDriver = (slotId: string, driverId: string) => {
@@ -211,12 +224,15 @@ export default function PlanningBoardPage() {
 
   const unassignDriver = (slotId: string) => {
     const slot = allSlots.find((s) => s.id === slotId);
-    // If this slot was finalized and has a linked Load, unassign the driver on the Load too
+    // If this slot was finalized and has a linked Load, unassign the driver on the Load too.
+    // Keep `confirmed: true` so the slot is not re-finalized into a duplicate Load.
     if (slot?.loadId) {
       const currentLoads = getLoads();
       saveLoads(currentLoads.map((l) => (l.id === slot.loadId ? { ...l, driverId: undefined } : l)));
+      savePlanningSlots(allSlots.map((s) => (s.id === slotId ? { ...s, driverId: undefined } : s)));
+    } else {
+      savePlanningSlots(allSlots.map((s) => (s.id === slotId ? { ...s, driverId: undefined, confirmed: false } : s)));
     }
-    savePlanningSlots(allSlots.map((s) => (s.id === slotId ? { ...s, driverId: undefined, confirmed: false } : s)));
   };
 
   // ─── Export / Copy ──────────────────────────────────────────────────────────
@@ -614,7 +630,9 @@ export default function PlanningBoardPage() {
             setFinalizeSlot(allSlots.find((s) => s.id === slotId) || null);
           }}
           onFinalizeAll={() => {
-            const daySlots = allSlots.filter((s) => s.date === finalizeDate && s.driverId && !s.confirmed && s.loadSummary !== "OFF");
+            // Only finalize slots that don't already have a linked Load.
+            // Slots with an existing loadId are already finalized — never duplicate them.
+            const daySlots = allSlots.filter((s) => s.date === finalizeDate && s.driverId && !s.loadId && s.loadSummary !== "OFF");
             const loads = getLoads();
             let created = 0;
 
@@ -1061,9 +1079,12 @@ function FinalizeVinDialog({
     const newCars: Car[] = [];
     const carIds: string[] = [];
 
-    // Generate load ID first so every car gets it
-    const loadId = generateId();
-    const refNumber = `LD-${new Date().getFullYear()}-${String(loads.length + 154).padStart(4, "0")}`;
+    // Reuse the slot's existing loadId if it was already finalized once.
+    // Otherwise generate a new one so every car gets it.
+    const isUpdate = !!slot.loadId;
+    const loadId = slot.loadId || generateId();
+    const existingLoad = isUpdate ? loads.find((l) => l.id === loadId) : undefined;
+    const refNumber = existingLoad?.referenceNumber || `LD-${new Date().getFullYear()}-${String(loads.length + 154).padStart(4, "0")}`;
 
     for (const pv of vins) {
       const existing = existingCars.find((c) => c.vin === pv.vin);
@@ -1120,7 +1141,11 @@ function FinalizeVinDialog({
       notes: vins.length === 0 ? `${slot.notes || ""} [VINs needed]`.trim() : (slot.notes || ""),
       carIds: carIds.length > 0 ? carIds : undefined,
     };
-    saveLoads([...loads, newLoad]);
+    if (isUpdate) {
+      saveLoads(loads.map((l) => l.id === loadId ? { ...l, ...newLoad } : l));
+    } else {
+      saveLoads([...loads, newLoad]);
+    }
     onComplete(newLoad.id);
   };
 

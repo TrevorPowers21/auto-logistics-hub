@@ -127,27 +127,27 @@ export default function DriverRecapPage() {
 
       if (board) {
         stops = normalizeBoardStops(board);
-        // Patch stops with fresher planning slot data when available.
-        // This handles the case where a board was auto-saved earlier but
-        // the user later updated the planning slot's customer/locations.
+        // Always prefer the freshest planning slot / linked load data over
+        // potentially stale auto-saved board entries.
         const driverPlanSlots = planningSlots.filter((s) => s.driverId === driver.id && s.date === date && s.loadSummary !== "OFF");
+        const allLoads = getLoads();
         if (driverPlanSlots.length > 0) {
-          stops = stops.map((stop) => {
-            // Match plan-derived stops by id (id is "plan-{slotId}")
-            if (stop.id?.startsWith("plan-")) {
-              const slotId = stop.id.slice(5);
-              const slot = driverPlanSlots.find((s) => s.id === slotId);
-              if (slot) {
-                return {
-                  ...stop,
-                  pickupLocation: stop.pickupLocation || slot.pickupLocation || "",
-                  dropoffLocation: stop.dropoffLocation || slot.deliveryLocation || "",
-                  customer: stop.customer || slot.customer,
-                  carCount: stop.carCount || slot.carCount || 0,
-                };
-              }
+          stops = stops.map((stop, idx) => {
+            // Try to match plan-derived stops by id (id is "plan-{slotId}")
+            let slot = stop.id?.startsWith("plan-") ? driverPlanSlots.find((s) => s.id === stop.id!.slice(5)) : undefined;
+            // Fallback: match by index if there's a 1:1 correspondence
+            if (!slot && driverPlanSlots.length === stops.length) {
+              slot = driverPlanSlots[idx];
             }
-            return stop;
+            if (!slot) return stop;
+            const linkedLoad = slot.loadId ? allLoads.find((l) => l.id === slot.loadId) : undefined;
+            return {
+              ...stop,
+              pickupLocation: slot.pickupLocation || linkedLoad?.pickupLocation || stop.pickupLocation || "",
+              dropoffLocation: slot.deliveryLocation || linkedLoad?.deliveryLocation || stop.dropoffLocation || "",
+              customer: slot.customer || linkedLoad?.customer || stop.customer,
+              carCount: stop.carCount || slot.carCount || linkedLoad?.carIds?.length || 0,
+            };
           });
         }
       } else {
@@ -397,8 +397,23 @@ export default function DriverRecapPage() {
             />
           </div>
 
-          {/* Pickup / Dropoff recap */}
-          <div className="grid gap-4 lg:grid-cols-2">
+          {/* Driver cards */}
+          <div className="grid gap-4 xl:grid-cols-2">
+            {driverRows.map((row) => (
+              <DriverLoadTable
+                key={row.id}
+                row={row}
+                locationOptions={locationOptions}
+                addressOptions={addressOptions}
+                onCreateLocation={handleCreateLocation}
+                onCreateAddress={handleCreateAddress}
+                onSave={handleSaveStops}
+              />
+            ))}
+          </div>
+
+          {/* Pickup / Dropoff recap — moved to bottom */}
+          <div className="grid gap-4 lg:grid-cols-2 pt-2">
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">Pickup Recap</CardTitle>
@@ -425,21 +440,6 @@ export default function DriverRecapPage() {
                 )}
               </CardContent>
             </Card>
-          </div>
-
-          {/* Driver cards */}
-          <div className="grid gap-4 xl:grid-cols-2">
-            {driverRows.map((row) => (
-              <DriverLoadTable
-                key={row.id}
-                row={row}
-                locationOptions={locationOptions}
-                addressOptions={addressOptions}
-                onCreateLocation={handleCreateLocation}
-                onCreateAddress={handleCreateAddress}
-                onSave={handleSaveStops}
-              />
-            ))}
           </div>
         </TabsContent>
 
