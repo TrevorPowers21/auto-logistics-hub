@@ -189,11 +189,15 @@ async function hydrateKey(key: StoreKey): Promise<void> {
   hydrating.delete(key);
 }
 
+// Track in-flight writes so refreshFromSupabase can wait/skip
+let inFlightWrites = 0;
+
 // Background sync: write entire collection to Supabase
 async function syncToSupabase<T extends { id: string }>(key: StoreKey, data: T[]): Promise<void> {
   if (!supabase) return;
   const table = TABLE_MAP[key];
 
+  inFlightWrites++;
   try {
     // Strip nested arrays before upserting
     const rows = data.map((item) => {
@@ -205,11 +209,8 @@ async function syncToSupabase<T extends { id: string }>(key: StoreKey, data: T[]
       return rowToSnake(table, plain);
     });
 
-    // Upsert all rows
-    const { error } = await supabase.from(table).upsert(rows, { onConflict: "id" });
-    if (error) console.error(`Supabase upsert ${table}:`, error);
-
-    // Handle deleted rows: fetch current IDs from Supabase, delete any not in data
+    // Do deletions FIRST so they're permanent before any auto-sync could read.
+    // This prevents the "deleted row comes back after refresh" race condition.
     const { data: existing } = await supabase.from(table).select("id");
     if (existing) {
       const currentIds = new Set(data.map((d) => d.id));
@@ -218,6 +219,10 @@ async function syncToSupabase<T extends { id: string }>(key: StoreKey, data: T[]
         await supabase.from(table).delete().in("id", toDelete);
       }
     }
+
+    // Then upsert all current rows
+    const { error } = await supabase.from(table).upsert(rows, { onConflict: "id" });
+    if (error) console.error(`Supabase upsert ${table}:`, error);
 
     // Sync child tables
     if (key === "vehicles") {
@@ -248,6 +253,8 @@ async function syncToSupabase<T extends { id: string }>(key: StoreKey, data: T[]
     }
   } catch (err) {
     console.warn(`Supabase sync ${table} failed:`, err);
+  } finally {
+    inFlightWrites--;
   }
 }
 
@@ -348,6 +355,8 @@ let syncInterval: ReturnType<typeof setInterval> | null = null;
 /** Force re-hydration of all keys from Supabase */
 export async function refreshFromSupabase(): Promise<void> {
   if (!supabase) return;
+  // Skip if a write is in progress — refetching mid-write could roll back the user's changes
+  if (inFlightWrites > 0) return;
   // Clear hydration flags so hydrateKey actually fetches
   hydrated.clear();
   hydrating.clear();
