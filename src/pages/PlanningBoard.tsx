@@ -584,29 +584,36 @@ export default function PlanningBoardPage() {
             {/* Spacer — Add Work is at the top of the page now */}
 
             {/* Finalize / Unfinalize day buttons */}
-            {day.daySlots.some((s) => s.driverId && s.loadSummary !== "OFF") && (
-              <div className="flex gap-2">
-                <Button
-                  variant="default" size="sm" className="flex-1"
-                  onClick={() => setFinalizeDate(day.date)}
-                >
-                  <Rocket className="h-3.5 w-3.5 mr-1" /> Finalize Day's Loads
-                </Button>
-                {day.daySlots.some((s) => s.loadId) && (
-                  <Button
-                    variant="outline" size="sm"
-                    className="text-amber-700 hover:text-amber-800 hover:bg-amber-50 border-amber-300"
-                    onClick={() => {
-                      if (confirm(`Unfinalize all loads for ${day.full}? This will delete the load records but keep the planning slots.`)) {
-                        unfinalizeDay(day.date);
-                      }
-                    }}
-                  >
-                    Unfinalize Day
-                  </Button>
-                )}
-              </div>
-            )}
+            {(() => {
+              const hasUnfinalized = day.daySlots.some((s) => s.driverId && !s.loadId && s.loadSummary !== "OFF");
+              const hasFinalized = day.daySlots.some((s) => s.loadId);
+              if (!hasUnfinalized && !hasFinalized) return null;
+              return (
+                <div className="flex gap-2">
+                  {hasUnfinalized && (
+                    <Button
+                      variant="default" size="sm" className="flex-1"
+                      onClick={() => setFinalizeDate(day.date)}
+                    >
+                      <Rocket className="h-3.5 w-3.5 mr-1" /> Finalize Day's Loads
+                    </Button>
+                  )}
+                  {hasFinalized && (
+                    <Button
+                      variant="outline" size="sm"
+                      className={`text-amber-700 hover:text-amber-800 hover:bg-amber-50 border-amber-300 ${!hasUnfinalized ? "flex-1" : ""}`}
+                      onClick={() => {
+                        if (confirm(`Unfinalize all loads for ${day.full}? This will delete the load records but keep the planning slots.`)) {
+                          unfinalizeDay(day.date);
+                        }
+                      }}
+                    >
+                      Unfinalize Day
+                    </Button>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         ))}
       </div>

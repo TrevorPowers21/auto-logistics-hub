@@ -71,6 +71,8 @@ export function syncLoadsToPlanning(loads: Load[]) {
 
   if (missing.length === 0 && !changed) return;
 
+  // Slots created from existing Loads are ALWAYS confirmed/real — the load already exists
+  // and shouldn't go through a finalize step. Finalize is only for planning-board-only slots.
   const newSlots = missing.map((l) => ({
     id: generateId(),
     date: l.pickupDate,
@@ -80,7 +82,7 @@ export function syncLoadsToPlanning(loads: Load[]) {
     pickupLocation: l.pickupLocation,
     deliveryLocation: l.deliveryLocation,
     carCount: l.carIds?.length || undefined,
-    confirmed: l.status !== "booked",
+    confirmed: true,
     loadId: l.id,
     notes: l.referenceNumber,
   }));
@@ -891,14 +893,15 @@ function LoadEditDialog({
       saveCars(updatedCars);
     }
 
-    // Sync driver changes back to Planning Board
+    // Sync driver changes back to Planning Board.
+    // Slots linked to a real Load stay confirmed=true regardless of driver assignment.
     if (newDriverId !== load.driverId) {
       const slots = getPlanningSlots();
       const linkedSlot = slots.find((s) => s.loadId === load.id);
       if (linkedSlot) {
         savePlanningSlots(slots.map((s) =>
           s.id === linkedSlot.id
-            ? { ...s, driverId: newDriverId, confirmed: !newDriverId ? false : s.confirmed }
+            ? { ...s, driverId: newDriverId }
             : s,
         ));
       }
