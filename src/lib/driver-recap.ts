@@ -167,6 +167,63 @@ export function createEmptyStop(): DriverBoardStop {
   };
 }
 
+/**
+ * Build the canonical stops list for a driver on a date.
+ * Derives base stops from planning slots (only those with a loadId — i.e. real loads),
+ * layers board entry overrides for status, and appends any manually-added board stops.
+ * Use this anywhere you need driver activity totals, including analytics.
+ */
+export function buildDriverStopsForDate(
+  driverId: string,
+  date: string,
+  planningSlots: Array<{ id: string; driverId?: string; date: string; loadId?: string; loadSummary?: string; pickupLocation?: string; deliveryLocation?: string; carCount?: number; customer?: string; notes?: string }>,
+  loads: Array<{ id: string; pickupLocation?: string; deliveryLocation?: string; carIds?: string[]; customer?: string }>,
+  boards: DriverBoardEntry[],
+): DriverBoardStop[] {
+  const driverPlanSlots = planningSlots.filter((s) =>
+    s.driverId === driverId &&
+    s.date === date &&
+    s.loadSummary !== "OFF" &&
+    s.loadId,
+  );
+
+  const baseStops: DriverBoardStop[] = driverPlanSlots.map((slot) => {
+    const linkedLoad = slot.loadId ? loads.find((l) => l.id === slot.loadId) : undefined;
+    return {
+      id: `plan-${slot.id}`,
+      carCount: slot.carCount || linkedLoad?.carIds?.length || 0,
+      pickupLocation: slot.pickupLocation || linkedLoad?.pickupLocation || "",
+      dropoffLocation: slot.deliveryLocation || linkedLoad?.deliveryLocation || "",
+      customer: slot.customer || linkedLoad?.customer,
+      status: "completed",
+      notes: slot.notes || "",
+    };
+  });
+
+  const board = boards.find((e) => e.driverId === driverId && e.date === date);
+  const boardStops = normalizeBoardStops(board);
+
+  // Layer board overrides on top
+  const stopsWithOverrides = baseStops.map((stop) => {
+    const override = boardStops.find((b) => b.id === stop.id);
+    if (!override) return stop;
+    return {
+      ...stop,
+      status: override.status,
+      payRatePerCar: override.payRatePerCar,
+      notes: override.notes || stop.notes,
+    };
+  });
+
+  // Plus any manually-added board stops (no plan/carry prefix)
+  const manualStops = boardStops.filter((b) =>
+    !b.id?.startsWith("plan-") &&
+    !b.id?.startsWith("carry-"),
+  );
+
+  return [...stopsWithOverrides, ...manualStops];
+}
+
 export function normalizeBoardStops(entry: DriverBoardEntry | undefined): DriverBoardStop[] {
   if (!entry) return [];
   if (entry.stops?.length) return entry.stops;
@@ -416,6 +473,8 @@ export function buildWeeklyExportText(
   weekDates: string[],
   drivers: Driver[],
   boards: DriverBoardEntry[],
+  planningSlots: Array<{ id: string; driverId?: string; date: string; loadId?: string; loadSummary?: string; pickupLocation?: string; deliveryLocation?: string; carCount?: number; customer?: string; notes?: string }> = [],
+  loads: Array<{ id: string; pickupLocation?: string; deliveryLocation?: string; carIds?: string[]; customer?: string }> = [],
 ): string {
   const startLabel = new Date(`${weekStart}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const endLabel = new Date(`${weekEnd}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -427,16 +486,11 @@ export function buildWeeklyExportText(
   const fmtCurrency = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const driverStats = activeDrivers.map((driver) => {
-    const dayCars = weekDates.map((date) => {
-      const board = boards.find((b) => b.driverId === driver.id && b.date === date);
-      const stops = normalizeBoardStops(board);
-      return stops.reduce((s, stop) => s + stop.carCount, 0);
-    });
-    const dayPay = weekDates.map((date) => {
-      const board = boards.find((b) => b.driverId === driver.id && b.date === date);
-      const stops = normalizeBoardStops(board);
-      return getBoardPayTotal(stops, driver.payRatePerCar);
-    });
+    const dayStops = weekDates.map((date) =>
+      buildDriverStopsForDate(driver.id, date, planningSlots, loads, boards),
+    );
+    const dayCars = dayStops.map((stops) => stops.reduce((s, stop) => s + stop.carCount, 0));
+    const dayPay = dayStops.map((stops) => getBoardPayTotal(stops, driver.payRatePerCar));
     const totalCars = dayCars.reduce((s, c) => s + c, 0);
     const totalPayVals = dayPay.filter((p) => p !== null) as number[];
     const totalPay = totalPayVals.length > 0 ? totalPayVals.reduce((s, p) => s + p, 0) : null;

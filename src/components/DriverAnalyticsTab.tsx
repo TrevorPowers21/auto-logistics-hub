@@ -5,9 +5,9 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Legend, Cell,
 } from "recharts";
-import { Driver, DriverBoardEntry, Load } from "@/lib/types";
+import { Driver, DriverBoardEntry, Load, PlanningSlot } from "@/lib/types";
 import { getLocations } from "@/lib/store";
-import { normalizeBoardStops, getBoardPayTotal, getBoardTotals } from "@/lib/driver-recap";
+import { buildDriverStopsForDate, getBoardPayTotal, getBoardTotals } from "@/lib/driver-recap";
 import {
   addDays, addMonths, format, startOfWeek, startOfMonth,
   endOfMonth, eachDayOfInterval, getDay,
@@ -121,14 +121,15 @@ function getRange(period: Period, referenceDate: string, offset: number): DateRa
 function computeDriverStats(
   drivers: Driver[],
   boards: DriverBoardEntry[],
+  planningSlots: PlanningSlot[],
+  loads: Load[],
   dates: string[],
 ): DriverStat[] {
   return drivers
     .filter((d) => d.status !== "inactive")
     .map((driver, index) => {
       const dailyData = dates.map((date) => {
-        const board = boards.find((b) => b.driverId === driver.id && b.date === date);
-        const stops = normalizeBoardStops(board);
+        const stops = buildDriverStopsForDate(driver.id, date, planningSlots, loads, boards);
         const totals = getBoardTotals(stops, driver.payRatePerCar);
         const pay = getBoardPayTotal(stops, driver.payRatePerCar);
         return { date, ...totals, pay };
@@ -177,11 +178,13 @@ export function DriverAnalyticsTab({
   boards,
   drivers,
   loads,
+  planningSlots,
   referenceDate,
 }: {
   boards: DriverBoardEntry[];
   drivers: Driver[];
   loads: Load[];
+  planningSlots: PlanningSlot[];
   referenceDate: string;
 }) {
   const [period, setPeriod] = useState<Period>("week");
@@ -189,8 +192,8 @@ export function DriverAnalyticsTab({
 
   const range = useMemo(() => getRange(period, referenceDate, offset), [period, referenceDate, offset]);
   const driverStats = useMemo(
-    () => computeDriverStats(drivers, boards, range.dates),
-    [drivers, boards, range.dates],
+    () => computeDriverStats(drivers, boards, planningSlots, loads, range.dates),
+    [drivers, boards, planningSlots, loads, range.dates],
   );
 
   const totals = useMemo(() => ({

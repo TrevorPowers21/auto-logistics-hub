@@ -24,6 +24,7 @@ import { toast } from "@/components/ui/sonner";
 import { useStoreData } from "@/hooks/use-store";
 import {
   buildDailyExportText,
+  buildDriverStopsForDate,
   buildWeeklyExportText,
   createEmptyStop,
   getBoardPayTotal,
@@ -209,23 +210,19 @@ export default function DriverRecapPage() {
   const weekEndStr = format(addDays(weekStart, 6), "yyyy-MM-dd");
 
   const weeklyRows = useMemo(() => {
+    const allLoads = getLoads();
     return activeDrivers.map((driver) => {
-      const dayCars = weekDates.map((d) => {
-        const board = boards.find((b) => b.driverId === driver.id && b.date === d);
-        const stops = normalizeBoardStops(board);
-        return stops.reduce((s, stop) => s + stop.carCount, 0);
-      });
-      const dayPay = weekDates.map((d) => {
-        const board = boards.find((b) => b.driverId === driver.id && b.date === d);
-        const stops = normalizeBoardStops(board);
-        return getBoardPayTotal(stops, driver.payRatePerCar);
-      });
+      const dayStops = weekDates.map((d) =>
+        buildDriverStopsForDate(driver.id, d, planningSlots, allLoads, boards),
+      );
+      const dayCars = dayStops.map((stops) => stops.reduce((s, stop) => s + stop.carCount, 0));
+      const dayPay = dayStops.map((stops) => getBoardPayTotal(stops, driver.payRatePerCar));
       const totalCars = dayCars.reduce((s, c) => s + c, 0);
       const payVals = dayPay.filter((p): p is number => p !== null);
       const totalPay = payVals.length > 0 ? payVals.reduce((s, p) => s + p, 0) : null;
       return { driver, dayCars, dayPay, totalCars, totalPay };
     }).filter((r) => r.totalCars > 0);
-  }, [activeDrivers, boards, weekDates]);
+  }, [activeDrivers, boards, planningSlots, weekDates]);
 
   const handleSaveStops = (driverId: string, stops: DriverBoardStop[]) => {
     const sanitized = sanitizeBoardStops(stops);
@@ -319,7 +316,7 @@ export default function DriverRecapPage() {
   };
 
   const handleExportWeek = () => {
-    const html = buildWeeklyExportText(weekStartStr, weekEndStr, weekDates, drivers, boards);
+    const html = buildWeeklyExportText(weekStartStr, weekEndStr, weekDates, drivers, boards, planningSlots, getLoads());
     downloadHtml(html, `weekly-recap-${weekStartStr}.html`);
   };
 
@@ -549,7 +546,7 @@ export default function DriverRecapPage() {
         </TabsContent>
         {/* ───────────── ANALYTICS TAB ───────────── */}
         <TabsContent value="analytics" className="space-y-6 mt-0">
-          <DriverAnalyticsTab boards={boards} drivers={drivers} loads={getLoads()} referenceDate={date} />
+          <DriverAnalyticsTab boards={boards} drivers={drivers} loads={getLoads()} planningSlots={planningSlots} referenceDate={date} />
 
           {/* Pickup / Dropoff totals for the selected date */}
           <div className="grid gap-4 lg:grid-cols-2">
