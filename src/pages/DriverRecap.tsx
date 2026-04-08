@@ -34,7 +34,7 @@ import {
   sanitizeBoardStops,
   formatRecapHeadingShort,
 } from "@/lib/driver-recap";
-import { generateId, getLocations, getAddresses, getDriverBoards, getDrivers, getLoads, getPlanningSlots, saveDriverBoards, saveLocations, saveAddresses } from "@/lib/store";
+import { generateId, getLocations, getAddresses, getDriverBoards, getDrivers, getLoads, getPlanningSlots, saveDriverBoards, saveLocations, saveAddresses, saveLoads, savePlanningSlots } from "@/lib/store";
 import { Address, Driver, DriverBoardEntry, DriverBoardStop, LocationProfile, PlanningSlot } from "@/lib/types";
 import { Ban, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, Download, Plus, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -95,101 +95,74 @@ export default function DriverRecapPage() {
     return planningSlots.find((s) => s.driverId === driverId && s.date === forDate && s.loadSummary === "OFF");
   };
 
-  // Convert planning slots into board stops when no board entry exists
-  const planningStopsForDriver = (driverId: string, forDate: string): DriverBoardStop[] => {
-    const driverSlots = planningSlots.filter((s) => s.driverId === driverId && s.date === forDate && s.loadSummary !== "OFF");
-    if (driverSlots.length === 0) return [];
-    return driverSlots.map((slot) => ({
+  // Build the freshest possible stop directly from a planning slot.
+  // Falls back to the linked load when slot fields are empty.
+  const slotToStop = (slot: PlanningSlot, allLoads: ReturnType<typeof getLoads>): DriverBoardStop => {
+    const linkedLoad = slot.loadId ? allLoads.find((l) => l.id === slot.loadId) : undefined;
+    return {
       id: `plan-${slot.id}`,
-      carCount: slot.carCount || 0,
-      pickupLocation: slot.pickupLocation || "",
-      dropoffLocation: slot.deliveryLocation || "",
-      customer: slot.customer,
-      status: "completed" as const,
+      carCount: slot.carCount || linkedLoad?.carIds?.length || 0,
+      pickupLocation: slot.pickupLocation || linkedLoad?.pickupLocation || "",
+      dropoffLocation: slot.deliveryLocation || linkedLoad?.deliveryLocation || "",
+      customer: slot.customer || linkedLoad?.customer,
+      status: "completed",
       notes: slot.notes || "",
-    }));
+    };
   };
 
-  // Auto-save: if a driver has planning data but no board entry, save it immediately
-  // so Susan can review without anyone needing to manually hit save
-  const autoSavedRef = useMemo(() => new Set<string>(), []);
-
   const driverRows = useMemo<DriverSheetRow[]>(() => {
-    const boardsToAutoSave: DriverBoardEntry[] = [];
+    const allLoads = getLoads();
 
-    const rows = activeDrivers.map((driver) => {
-      const board = boards.find((e) => e.driverId === driver.id && e.date === date);
+    return activeDrivers.map((driver) => {
       const offSlot = isDriverOff(driver.id, date);
 
-      // If no board entry, check for planning data or carryovers to auto-save
-      let stops: DriverBoardStop[];
-      let fromPlanning = false;
+      // 1. ALWAYS derive base stops fresh from planning slots — never cache them.
+      // The planning slot is the single source of truth for customer/pickup/delivery.
+      const driverPlanSlots = planningSlots.filter((s) => s.driverId === driver.id && s.date === date && s.loadSummary !== "OFF");
+      const baseStops: DriverBoardStop[] = driverPlanSlots.map((s) => slotToStop(s, allLoads));
 
-      if (board) {
-        stops = normalizeBoardStops(board);
-        // Always prefer the freshest planning slot / linked load data over
-        // potentially stale auto-saved board entries.
-        const driverPlanSlots = planningSlots.filter((s) => s.driverId === driver.id && s.date === date && s.loadSummary !== "OFF");
-        const allLoads = getLoads();
-        if (driverPlanSlots.length > 0) {
-          stops = stops.map((stop, idx) => {
-            // Try to match plan-derived stops by id (id is "plan-{slotId}")
-            let slot = stop.id?.startsWith("plan-") ? driverPlanSlots.find((s) => s.id === stop.id!.slice(5)) : undefined;
-            // Fallback: match by index if there's a 1:1 correspondence
-            if (!slot && driverPlanSlots.length === stops.length) {
-              slot = driverPlanSlots[idx];
-            }
-            if (!slot) return stop;
-            const linkedLoad = slot.loadId ? allLoads.find((l) => l.id === slot.loadId) : undefined;
-            return {
-              ...stop,
-              pickupLocation: slot.pickupLocation || linkedLoad?.pickupLocation || stop.pickupLocation || "",
-              dropoffLocation: slot.deliveryLocation || linkedLoad?.deliveryLocation || stop.dropoffLocation || "",
-              customer: slot.customer || linkedLoad?.customer || stop.customer,
-              carCount: stop.carCount || slot.carCount || linkedLoad?.carIds?.length || 0,
-            };
-          });
-        }
-      } else {
-        const planStops = planningStopsForDriver(driver.id, date);
+      // 2. Pull yesterday's overnight carryovers
+      const prevBoard = boards.find((e) => e.driverId === driver.id && e.date === prevDate);
+      const prevStops = normalizeBoardStops(prevBoard);
+      const carryoverStops: DriverBoardStop[] = prevStops
+        .filter((s) => s.status === "overnight")
+        .map((s) => ({
+          id: `carry-${s.id}`,
+          carCount: s.carCount,
+          pickupLocation: "SHOP",
+          dropoffLocation: s.dropoffLocation || "",
+          status: "completed" as const,
+          notes: "Carryover from yesterday",
+        }));
 
-        // Also check previous day for overnight carryovers to include
-        const prevBoard = boards.find((e) => e.driverId === driver.id && e.date === prevDate);
-        const prevStops = normalizeBoardStops(prevBoard);
-        const carryoverStops: DriverBoardStop[] = prevStops
-          .filter((s) => s.status === "overnight")
-          .map((s) => ({
-            id: `carry-${s.id}`,
-            carCount: s.carCount,
-            pickupLocation: "SHOP",
-            dropoffLocation: s.dropoffLocation || "",
-            status: "completed" as const,
-            notes: "Carryover from yesterday",
-          }));
+      // 3. Layer board entry overrides on top — only for status, payRate, and manual additions.
+      // Locations + customer always come from the slot; the board can only override status.
+      const board = boards.find((e) => e.driverId === driver.id && e.date === date);
+      const boardStops = normalizeBoardStops(board);
 
-        stops = [...carryoverStops, ...planStops];
-        fromPlanning = stops.length > 0;
+      const planAndCarryoverStops = [...carryoverStops, ...baseStops];
+      const stopsWithOverrides = planAndCarryoverStops.map((stop) => {
+        const override = boardStops.find((b) => b.id === stop.id);
+        if (!override) return stop;
+        return {
+          ...stop,
+          status: override.status,
+          payRatePerCar: override.payRatePerCar,
+          notes: override.notes || stop.notes,
+        };
+      });
 
-        // Auto-save so it's persisted without manual intervention
-        const autoKey = `${driver.id}-${date}`;
-        if (stops.length > 0 && !autoSavedRef.has(autoKey)) {
-          autoSavedRef.add(autoKey);
-          boardsToAutoSave.push({
-            id: generateId(),
-            driverId: driver.id,
-            date,
-            items: stops.map((s) => `${s.carCount}-${s.pickupLocation}`),
-            stops,
-            updatedAt: new Date().toISOString(),
-          });
-        }
-      }
+      // 4. Append manually-added board stops (those without a matching plan/carry id)
+      const manualStops = boardStops.filter((b) =>
+        !b.id?.startsWith("plan-") &&
+        !b.id?.startsWith("carry-"),
+      );
+
+      const stops = [...stopsWithOverrides, ...manualStops];
+      const fromPlanning = baseStops.length > 0;
 
       const totals = getBoardTotals(stops, driver.payRatePerCar);
 
-      // Carryover display (separate from the auto-saved stops above)
-      const prevBoard = boards.find((e) => e.driverId === driver.id && e.date === prevDate);
-      const prevStops = normalizeBoardStops(prevBoard);
       const carriedOver: CarriedOverStop[] = prevStops
         .filter((s) => s.status === "overnight")
         .map((s) => ({
@@ -201,21 +174,6 @@ export default function DriverRecapPage() {
 
       return { id: driver.id, driver, board, stops, carriedOver, fromPlanning, offNotes: offSlot ? (offSlot.notes || "") : undefined, ...totals };
     });
-
-    // Batch auto-save outside render
-    if (boardsToAutoSave.length > 0) {
-      setTimeout(() => {
-        const current = getDriverBoards();
-        const newBoards = boardsToAutoSave.filter(
-          (b) => !current.some((c) => c.driverId === b.driverId && c.date === b.date),
-        );
-        if (newBoards.length > 0) {
-          saveDriverBoards([...current, ...newBoards]);
-        }
-      }, 0);
-    }
-
-    return rows;
   }, [boards, planningSlots, date, prevDate, activeDrivers]);
 
   const pickupRecap = useMemo(() => buildLocationRecap(driverRows, "pickup"), [driverRows]);
@@ -265,6 +223,48 @@ export default function DriverRecapPage() {
 
   const handleSaveStops = (driverId: string, stops: DriverBoardStop[]) => {
     const sanitized = sanitizeBoardStops(stops);
+
+    // Propagate edits on plan-derived stops back to the planning slot.
+    // This keeps the slot as the single source of truth for customer/locations.
+    const currentSlots = getPlanningSlots();
+    let slotsChanged = false;
+    const updatedSlots = currentSlots.map((slot) => {
+      if (slot.driverId !== driverId || slot.date !== date) return slot;
+      const matchingStop = sanitized.find((s) => s.id === `plan-${slot.id}`);
+      if (!matchingStop) return slot;
+      const needsUpdate =
+        slot.pickupLocation !== matchingStop.pickupLocation ||
+        slot.deliveryLocation !== matchingStop.dropoffLocation ||
+        slot.customer !== matchingStop.customer ||
+        slot.carCount !== matchingStop.carCount;
+      if (!needsUpdate) return slot;
+      slotsChanged = true;
+      return {
+        ...slot,
+        pickupLocation: matchingStop.pickupLocation,
+        deliveryLocation: matchingStop.dropoffLocation,
+        customer: matchingStop.customer,
+        carCount: matchingStop.carCount,
+      };
+    });
+    if (slotsChanged) {
+      savePlanningSlots(updatedSlots);
+      // Also push to linked loads
+      const currentLoads = getLoads();
+      const loadsChanged = currentLoads.map((load) => {
+        const linkedSlot = updatedSlots.find((s) => s.loadId === load.id);
+        if (!linkedSlot) return load;
+        return {
+          ...load,
+          customer: linkedSlot.customer || load.customer,
+          pickupLocation: linkedSlot.pickupLocation || load.pickupLocation,
+          deliveryLocation: linkedSlot.deliveryLocation || load.deliveryLocation,
+        };
+      });
+      saveLoads(loadsChanged);
+    }
+
+    // Save board entry for status overrides + manual stops only
     const existing = boards.find((e) => e.driverId === driverId && e.date === date);
     const next: DriverBoardEntry = {
       id: existing?.id || generateId(),

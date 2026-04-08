@@ -222,6 +222,34 @@ export default function PlanningBoardPage() {
     toast("Driver assigned");
   };
 
+  // Unfinalize: deletes the linked Load (and unlinks its cars), clears the slot's loadId,
+  // and resets confirmed=false. The planning slot itself stays.
+  const unfinalizeSlot = (slotId: string) => {
+    const slot = allSlots.find((s) => s.id === slotId);
+    if (!slot?.loadId) return;
+    const currentLoads = getLoads();
+    const linkedLoad = currentLoads.find((l) => l.id === slot.loadId);
+    saveLoads(currentLoads.filter((l) => l.id !== slot.loadId));
+    if (linkedLoad?.carIds?.length) {
+      const currentCars = getCars();
+      saveCars(currentCars.map((c) => c.loadId === slot.loadId ? { ...c, loadId: undefined, status: "at_shop" } : c));
+    }
+    savePlanningSlots(allSlots.map((s) => s.id === slotId ? { ...s, loadId: undefined, confirmed: false } : s));
+  };
+
+  // Unfinalize all loads for a given day — deletes all linked Loads, clears slot loadIds.
+  const unfinalizeDay = (dateStr: string) => {
+    const daySlotsToUnfinalize = allSlots.filter((s) => s.date === dateStr && s.loadId);
+    if (daySlotsToUnfinalize.length === 0) return;
+    const loadIdsToDelete = new Set(daySlotsToUnfinalize.map((s) => s.loadId!));
+    const currentLoads = getLoads();
+    saveLoads(currentLoads.filter((l) => !loadIdsToDelete.has(l.id)));
+    const currentCars = getCars();
+    saveCars(currentCars.map((c) => c.loadId && loadIdsToDelete.has(c.loadId) ? { ...c, loadId: undefined, status: "at_shop" } : c));
+    savePlanningSlots(allSlots.map((s) => loadIdsToDelete.has(s.loadId || "") ? { ...s, loadId: undefined, confirmed: false } : s));
+    toast(`${daySlotsToUnfinalize.length} load${daySlotsToUnfinalize.length === 1 ? "" : "s"} unfinalized`);
+  };
+
   const unassignDriver = (slotId: string) => {
     const slot = allSlots.find((s) => s.id === slotId);
     // If this slot was finalized and has a linked Load, unassign the driver on the Load too.
@@ -555,14 +583,29 @@ export default function PlanningBoardPage() {
 
             {/* Spacer — Add Work is at the top of the page now */}
 
-            {/* Finalize day button — always visible if there are assigned slots */}
+            {/* Finalize / Unfinalize day buttons */}
             {day.daySlots.some((s) => s.driverId && s.loadSummary !== "OFF") && (
-              <Button
-                variant="default" size="sm" className="w-full"
-                onClick={() => setFinalizeDate(day.date)}
-              >
-                <Rocket className="h-3.5 w-3.5 mr-1" /> Finalize Day's Loads
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="default" size="sm" className="flex-1"
+                  onClick={() => setFinalizeDate(day.date)}
+                >
+                  <Rocket className="h-3.5 w-3.5 mr-1" /> Finalize Day's Loads
+                </Button>
+                {day.daySlots.some((s) => s.loadId) && (
+                  <Button
+                    variant="outline" size="sm"
+                    className="text-amber-700 hover:text-amber-800 hover:bg-amber-50 border-amber-300"
+                    onClick={() => {
+                      if (confirm(`Unfinalize all loads for ${day.full}? This will delete the load records but keep the planning slots.`)) {
+                        unfinalizeDay(day.date);
+                      }
+                    }}
+                  >
+                    Unfinalize Day
+                  </Button>
+                )}
+              </div>
             )}
           </div>
         ))}
@@ -615,6 +658,7 @@ export default function PlanningBoardPage() {
         onSave={saveSlot}
         onDelete={deleteSlot}
         onUnassign={(id) => { unassignDriver(id); setEditingSlot(null); }}
+        onUnfinalize={unfinalizeSlot}
         onClose={() => setEditingSlot(null)}
       />
 
@@ -694,7 +738,7 @@ export default function PlanningBoardPage() {
 // ─── Slot Edit Dialog ─────────────────────────────────────────────────────────
 
 function SlotDialog({
-  slot, drivers, allSlots, customerOptions, addressOptions, onCreateLocation, onCreateAddress, onSave, onDelete, onUnassign, onClose,
+  slot, drivers, allSlots, customerOptions, addressOptions, onCreateLocation, onCreateAddress, onSave, onDelete, onUnassign, onUnfinalize, onClose,
 }: {
   slot: PlanningSlot | null;
   drivers: Driver[];
@@ -706,6 +750,7 @@ function SlotDialog({
   onSave: (slot: PlanningSlot) => void;
   onDelete: (id: string) => void;
   onUnassign: (id: string) => void;
+  onUnfinalize: (id: string) => void;
   onClose: () => void;
 }) {
   const [customer, setCustomer] = useState("");
@@ -949,6 +994,13 @@ function SlotDialog({
                 {slot.id && slot.driverId && (
                   <Button type="button" variant="outline" size="sm" onClick={() => onUnassign(slot.id)}>
                     Move to Unassigned
+                  </Button>
+                )}
+                {slot.id && slot.loadId && (
+                  <Button type="button" variant="outline" size="sm"
+                    className="text-amber-700 hover:text-amber-800 hover:bg-amber-50 border-amber-300"
+                    onClick={() => { onUnfinalize(slot.id); onClose(); }}>
+                    Unfinalize
                   </Button>
                 )}
               </div>
