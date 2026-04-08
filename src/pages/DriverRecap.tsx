@@ -803,6 +803,7 @@ function DriverLoadTable({
                     <SearchableAddressSelect
                       value={stop.pickupLocation}
                       options={addressOptions}
+                      customers={locationOptions}
                       placeholder="Where picked up"
                       onCreate={onCreateAddress}
                       onValueChange={(v) => updateStop(index, { pickupLocation: v })}
@@ -813,6 +814,7 @@ function DriverLoadTable({
                     <SearchableAddressSelect
                       value={stop.dropoffLocation}
                       options={addressOptions}
+                      customers={locationOptions}
                       placeholder="Final destination"
                       onCreate={onCreateAddress}
                       onValueChange={(v) => updateStop(index, { dropoffLocation: v })}
@@ -939,20 +941,28 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function SearchableAddressSelect({
-  value, options, placeholder, onCreate, onValueChange,
+  value, options, placeholder, onCreate, onValueChange, customers,
 }: {
   value: string;
   options: Address[];
   placeholder: string;
   onCreate: (value: string) => string;
   onValueChange: (value: string) => void;
+  customers?: LocationProfile[];
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const filtered = options.filter((a) =>
-    !query || a.name.toUpperCase().includes(query.toUpperCase()) || a.city.toUpperCase().includes(query.toUpperCase()),
-  ).slice(0, 20);
-  const canCreate = query.trim().length > 0 && !options.some((a) => a.name.toUpperCase() === query.trim().toUpperCase());
+  const q = query.toUpperCase();
+  const addrMatches = options
+    .filter((a) => !query || a.name.toUpperCase().includes(q) || a.city.toUpperCase().includes(q))
+    .map((a) => ({ id: a.id, name: a.name, sub: a.city ? `${a.city}${a.state ? `, ${a.state}` : ""}` : "" }));
+  const custMatches = (customers || [])
+    .filter((c) => !query || c.name.toUpperCase().includes(q) || c.code.includes(q))
+    .map((c) => ({ id: `cust-${c.id}`, name: c.name, sub: c.code }));
+  const filtered = [...addrMatches, ...custMatches].slice(0, 20);
+  const canCreate = query.trim().length > 0
+    && !options.some((a) => a.name.toUpperCase() === query.trim().toUpperCase())
+    && !(customers || []).some((c) => c.name.toUpperCase() === query.trim().toUpperCase());
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -964,19 +974,19 @@ function SearchableAddressSelect({
       </PopoverTrigger>
       <PopoverContent className="w-[320px] p-0" align="start">
         <Command>
-          <CommandInput placeholder="Search addresses..." value={query} onValueChange={setQuery} />
+          <CommandInput placeholder="Search address or customer..." value={query} onValueChange={setQuery} />
           <CommandList>
             <CommandGroup>
               {filtered.map((a) => (
                 <CommandItem
                   key={a.id}
-                  value={`${a.name} ${a.city} ${a.line1}`}
+                  value={`${a.name} ${a.sub}`}
                   onSelect={() => { onValueChange(a.name); setOpen(false); }}
                 >
                   <Check className={cn("mr-2 h-4 w-4", value === a.name ? "opacity-100" : "opacity-0")} />
                   <div className="flex flex-col">
                     <span className="text-sm">{a.name}</span>
-                    {a.city && <span className="text-xs text-muted-foreground">{a.city}, {a.state}</span>}
+                    {a.sub && <span className="text-xs text-muted-foreground">{a.sub}</span>}
                   </div>
                 </CommandItem>
               ))}
@@ -998,7 +1008,7 @@ function SearchableAddressSelect({
                 </CommandItem>
               )}
             </CommandGroup>
-            <CommandEmpty>No address found.</CommandEmpty>
+            <CommandEmpty>No matches found.</CommandEmpty>
           </CommandList>
         </Command>
       </PopoverContent>
