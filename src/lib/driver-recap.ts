@@ -373,9 +373,9 @@ export function buildDailyExportText(
         const statusDot = stop.status === "completed" ? "" : stop.status === "overnight" ? '<span style="color:#d97706;">⏸</span> ' : '<span style="color:#7c3aed;">⇄</span> ';
         return `
           <tr>
-            <td style="padding:3px 6px;text-align:center;font-weight:700;font-variant-numeric:tabular-nums;width:24px;">${stop.carCount}</td>
-            <td style="padding:3px 6px;font-weight:500;color:#0f172a;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(customer || "—")}</td>
-            <td style="padding:3px 6px;color:#475569;">${statusDot}${escapeHtml(stop.pickupLocation || "—")} <span style="color:#cbd5e1;">→</span> ${escapeHtml(endLoc || "—")}</td>
+            <td style="padding:4px 8px;text-align:center;font-weight:700;font-variant-numeric:tabular-nums;width:28px;">${stop.carCount}</td>
+            <td style="padding:4px 8px;font-weight:500;color:#0f172a;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(customer || "—")}</td>
+            <td style="padding:4px 8px;color:#475569;">${statusDot}${escapeHtml(stop.pickupLocation || "—")} <span style="color:#cbd5e1;">→</span> ${escapeHtml(endLoc || "—")}</td>
           </tr>
         `;
       }).join("");
@@ -403,26 +403,26 @@ export function buildDailyExportText(
     @page { size: letter landscape; margin: 0.4in; }
     @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
     * { box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 16px 20px; color: #0f172a; background: #ffffff; font-size: 11px; }
-    .header { display: flex; align-items: center; justify-content: space-between; background: linear-gradient(135deg, hsl(222, 47%, 16%) 0%, hsl(222, 47%, 24%) 100%); color: white; padding: 10px 16px; border-radius: 6px; margin-bottom: 10px; }
-    .header-title { font-size: 14px; font-weight: 700; }
-    .header-sub { font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.75; font-weight: 600; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 18px 22px; color: #0f172a; background: #ffffff; font-size: 13px; }
+    .header { display: flex; align-items: center; justify-content: space-between; background: linear-gradient(135deg, hsl(222, 47%, 16%) 0%, hsl(222, 47%, 24%) 100%); color: white; padding: 12px 18px; border-radius: 7px; margin-bottom: 12px; }
+    .header-title { font-size: 17px; font-weight: 700; }
+    .header-sub { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.75; font-weight: 600; }
     .header-date { font-size: 11px; opacity: 0.92; }
-    .kpi-bar { display: flex; gap: 8px; margin-bottom: 12px; }
-    .kpi { flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 5px; padding: 6px 10px; }
-    .kpi-label { font-size: 8px; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; font-weight: 600; }
-    .kpi-value { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; margin-top: 1px; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-    .driver-card { border: 1px solid #e2e8f0; border-radius: 5px; overflow: hidden; break-inside: avoid; page-break-inside: avoid; }
-    .driver-head { display: flex; justify-content: space-between; align-items: center; padding: 5px 8px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
-    .driver-name { font-weight: 700; font-size: 11px; color: #0f172a; }
-    .driver-stats { display: flex; gap: 4px; }
-    .cars-pill { background: #e2e8f0; color: #334155; font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 9999px; font-variant-numeric: tabular-nums; }
-    .pay-pill { background: #d1fae5; color: #065f46; font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 9999px; font-variant-numeric: tabular-nums; }
-    .stop-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+    .kpi-bar { display: flex; gap: 10px; margin-bottom: 14px; }
+    .kpi { flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px; }
+    .kpi-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; font-weight: 600; }
+    .kpi-value { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; margin-top: 2px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    .driver-card { border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; break-inside: avoid; page-break-inside: avoid; }
+    .driver-head { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
+    .driver-name { font-weight: 700; font-size: 13px; color: #0f172a; }
+    .driver-stats { display: flex; gap: 5px; }
+    .cars-pill { background: #e2e8f0; color: #334155; font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 9999px; font-variant-numeric: tabular-nums; }
+    .pay-pill { background: #d1fae5; color: #065f46; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 9999px; font-variant-numeric: tabular-nums; }
+    .stop-table { width: 100%; border-collapse: collapse; font-size: 11px; }
     .stop-table tr { border-bottom: 1px solid #f1f5f9; }
     .stop-table tr:last-child { border-bottom: none; }
-    .footer { margin-top: 8px; font-size: 8px; color: #94a3b8; text-align: center; padding-top: 4px; border-top: 1px solid #f1f5f9; }
+    .footer { margin-top: 10px; font-size: 9px; color: #94a3b8; text-align: center; padding-top: 5px; border-top: 1px solid #f1f5f9; }
   </style>
 </head>
 <body>
