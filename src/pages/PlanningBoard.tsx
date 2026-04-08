@@ -174,6 +174,18 @@ export default function PlanningBoardPage() {
   const saveSlot = (slot: PlanningSlot) => {
     if (slot.id) {
       savePlanningSlots(allSlots.map((s) => (s.id === slot.id ? slot : s)));
+      // If this slot is linked to a finalized Load, propagate edits to the Load too
+      if (slot.loadId) {
+        const currentLoads = getLoads();
+        saveLoads(currentLoads.map((l) => l.id === slot.loadId ? {
+          ...l,
+          customer: slot.customer || l.customer,
+          pickupLocation: slot.pickupLocation || l.pickupLocation,
+          deliveryLocation: slot.deliveryLocation || l.deliveryLocation,
+          driverId: slot.driverId || l.driverId,
+          pickupDate: slot.date || l.pickupDate,
+        } : l));
+      }
     } else {
       savePlanningSlots([...allSlots, { ...slot, id: generateId() }]);
     }

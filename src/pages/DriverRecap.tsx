@@ -104,6 +104,7 @@ export default function DriverRecapPage() {
       carCount: slot.carCount || 0,
       pickupLocation: slot.pickupLocation || "",
       dropoffLocation: slot.deliveryLocation || "",
+      customer: slot.customer,
       status: "completed" as const,
       notes: slot.notes || "",
     }));
@@ -126,6 +127,29 @@ export default function DriverRecapPage() {
 
       if (board) {
         stops = normalizeBoardStops(board);
+        // Patch stops with fresher planning slot data when available.
+        // This handles the case where a board was auto-saved earlier but
+        // the user later updated the planning slot's customer/locations.
+        const driverPlanSlots = planningSlots.filter((s) => s.driverId === driver.id && s.date === date && s.loadSummary !== "OFF");
+        if (driverPlanSlots.length > 0) {
+          stops = stops.map((stop) => {
+            // Match plan-derived stops by id (id is "plan-{slotId}")
+            if (stop.id?.startsWith("plan-")) {
+              const slotId = stop.id.slice(5);
+              const slot = driverPlanSlots.find((s) => s.id === slotId);
+              if (slot) {
+                return {
+                  ...stop,
+                  pickupLocation: stop.pickupLocation || slot.pickupLocation || "",
+                  dropoffLocation: stop.dropoffLocation || slot.deliveryLocation || "",
+                  customer: stop.customer || slot.customer,
+                  carCount: stop.carCount || slot.carCount || 0,
+                };
+              }
+            }
+            return stop;
+          });
+        }
       } else {
         const planStops = planningStopsForDriver(driver.id, date);
 
