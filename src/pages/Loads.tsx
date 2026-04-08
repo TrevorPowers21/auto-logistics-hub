@@ -22,6 +22,7 @@ import { useStoreData } from "@/hooks/use-store";
 import { Address, Car, Load, LoadStatus, LocationProfile } from "@/lib/types";
 import { decodeVin } from "@/lib/vin";
 import { CalendarDays, Plus, Search, Filter, Truck, X } from "lucide-react";
+import { LocalLoadDialog } from "@/components/LocalLoadDialog";
 
 const statusColor: Record<LoadStatus, string> = {
   booked: "bg-blue-100 text-blue-800",
@@ -112,6 +113,7 @@ export default function LoadsPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<"pickup" | "delivered">("pickup");
   const [open, setOpen] = useState(false);
+  const [localLoadOpen, setLocalLoadOpen] = useState(false);
   const [newDriverId, setNewDriverId] = useState("");
   const [newCustomer, setNewCustomer] = useState(""); // customer code
   const [newPickup, setNewPickup] = useState("");     // address text
@@ -463,6 +465,10 @@ export default function LoadsPage() {
           <h1 className="text-2xl font-bold tracking-tight">Loads</h1>
           <p className="text-muted-foreground text-sm mt-1">{loads.length} total shipments</p>
         </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setLocalLoadOpen(true)}>
+            <Truck className="h-4 w-4 mr-1" /> Local Load
+          </Button>
         <Dialog open={open} onOpenChange={handleOpenChange}>
           <DialogTrigger asChild>
             <Button><Plus className="h-4 w-4 mr-1" /> New Load</Button>
@@ -637,7 +643,10 @@ export default function LoadsPage() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
+
+      <LocalLoadDialog open={localLoadOpen} onOpenChange={setLocalLoadOpen} />
 
       <div className="flex gap-3 flex-wrap">
         <div className="relative max-w-xs">
