@@ -237,17 +237,19 @@ export default function PlanningBoardPage() {
     savePlanningSlots(allSlots.map((s) => s.id === slotId ? { ...s, loadId: undefined, confirmed: false } : s));
   };
 
-  // Unfinalize all loads for a given day — deletes all linked Loads, clears slot loadIds.
+  // Unfinalize all loads for a given day — wipes EVERY load with that pickup date,
+  // including orphans not linked to slots, so refinalize starts from a clean slate.
   const unfinalizeDay = (dateStr: string) => {
-    const daySlotsToUnfinalize = allSlots.filter((s) => s.date === dateStr && s.loadId);
-    if (daySlotsToUnfinalize.length === 0) return;
-    const loadIdsToDelete = new Set(daySlotsToUnfinalize.map((s) => s.loadId!));
     const currentLoads = getLoads();
+    const loadsForDay = currentLoads.filter((l) => l.pickupDate === dateStr);
+    if (loadsForDay.length === 0) return;
+    const loadIdsToDelete = new Set(loadsForDay.map((l) => l.id));
+
     saveLoads(currentLoads.filter((l) => !loadIdsToDelete.has(l.id)));
     const currentCars = getCars();
     saveCars(currentCars.map((c) => c.loadId && loadIdsToDelete.has(c.loadId) ? { ...c, loadId: undefined, status: "at_shop" } : c));
     savePlanningSlots(allSlots.map((s) => loadIdsToDelete.has(s.loadId || "") ? { ...s, loadId: undefined, confirmed: false } : s));
-    toast(`${daySlotsToUnfinalize.length} load${daySlotsToUnfinalize.length === 1 ? "" : "s"} unfinalized`);
+    toast(`${loadsForDay.length} load${loadsForDay.length === 1 ? "" : "s"} unfinalized`);
   };
 
   const unassignDriver = (slotId: string) => {
@@ -586,7 +588,8 @@ export default function PlanningBoardPage() {
             {/* Finalize / Unfinalize day buttons */}
             {(() => {
               const hasUnfinalized = day.daySlots.some((s) => s.driverId && !s.loadId && s.loadSummary !== "OFF");
-              const hasFinalized = day.daySlots.some((s) => s.loadId);
+              // Show Unfinalize if any load exists for this date (slot-linked OR orphan)
+              const hasFinalized = allLoads.some((l) => l.pickupDate === day.date);
               if (!hasUnfinalized && !hasFinalized) return null;
               return (
                 <div className="flex gap-2">
