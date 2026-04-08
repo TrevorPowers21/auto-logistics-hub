@@ -369,41 +369,27 @@ export function buildDailyExportText(
     .map((row) => {
       const stopRows = row.stops.map((stop) => {
         const endLoc = stop.status === "overnight" ? (stop.overnightLocation || stop.dropoffLocation) : stop.dropoffLocation;
-        const stopPay = getStopPay(stop, row.driver.payRatePerCar);
         const customer = resolveCustomer(stop.customer);
+        const statusDot = stop.status === "completed" ? "" : stop.status === "overnight" ? '<span style="color:#d97706;">⏸</span> ' : '<span style="color:#7c3aed;">⇄</span> ';
         return `
           <tr>
-            <td style="padding:8px 12px;text-align:center;font-weight:600;font-variant-numeric:tabular-nums;">${stop.carCount}</td>
-            <td style="padding:8px 12px;">${escapeHtml(customer || "—")}</td>
-            <td style="padding:8px 12px;color:#475569;">${escapeHtml(stop.pickupLocation || "—")} <span style="color:#94a3b8;">→</span> ${escapeHtml(endLoc || "—")}</td>
-            <td style="padding:8px 12px;text-align:center;">${statusBadge(stop.status)}</td>
-            <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;color:#047857;font-weight:600;">${stopPay !== null ? fmtCurrency(stopPay) : "—"}</td>
+            <td style="padding:3px 6px;text-align:center;font-weight:700;font-variant-numeric:tabular-nums;width:24px;">${stop.carCount}</td>
+            <td style="padding:3px 6px;font-weight:500;color:#0f172a;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(customer || "—")}</td>
+            <td style="padding:3px 6px;color:#475569;">${statusDot}${escapeHtml(stop.pickupLocation || "—")} <span style="color:#cbd5e1;">→</span> ${escapeHtml(endLoc || "—")}</td>
           </tr>
-          ${stop.notes ? `<tr><td colspan="5" style="padding:0 12px 8px;color:#94a3b8;font-style:italic;font-size:12px;">${escapeHtml(stop.notes)}</td></tr>` : ""}
         `;
       }).join("");
 
       return `
-        <div style="margin-bottom:24px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;">
-            <div>
-              <div style="font-weight:700;font-size:15px;color:#0f172a;">${escapeHtml(row.driver.name)}</div>
-              <div style="font-size:11px;color:#64748b;margin-top:2px;">${row.totalCars} cars${row.heldCars > 0 ? ` · ${row.heldCars} held` : ""}</div>
+        <div class="driver-card">
+          <div class="driver-head">
+            <div class="driver-name">${escapeHtml(row.driver.name)}</div>
+            <div class="driver-stats">
+              <span class="cars-pill">${row.totalCars} cars</span>
+              ${row.totalPay !== null ? `<span class="pay-pill">${fmtCurrency(row.totalPay)}</span>` : ""}
             </div>
-            ${row.totalPay !== null ? `<div style="font-weight:700;color:#047857;font-size:16px;font-variant-numeric:tabular-nums;">${fmtCurrency(row.totalPay)}</div>` : ""}
           </div>
-          <table style="width:100%;border-collapse:collapse;font-size:13px;">
-            <thead>
-              <tr style="background:#f8fafc;color:#64748b;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;">
-                <th style="padding:6px 12px;text-align:center;font-weight:600;">Cars</th>
-                <th style="padding:6px 12px;text-align:left;font-weight:600;">Customer</th>
-                <th style="padding:6px 12px;text-align:left;font-weight:600;">Route</th>
-                <th style="padding:6px 12px;text-align:center;font-weight:600;">Status</th>
-                <th style="padding:6px 12px;text-align:right;font-weight:600;">Pay</th>
-              </tr>
-            </thead>
-            <tbody>${stopRows}</tbody>
-          </table>
+          <table class="stop-table">${stopRows}</table>
         </div>
       `;
     }).join("");
@@ -414,33 +400,50 @@ export function buildDailyExportText(
   <meta charset="UTF-8">
   <title>Driver Recap — ${escapeHtml(heading)}</title>
   <style>
+    @page { size: letter landscape; margin: 0.4in; }
     @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 900px; margin: 0 auto; padding: 32px 24px; color: #0f172a; background: #ffffff; }
-    .header-band { background: linear-gradient(135deg, hsl(222, 47%, 16%) 0%, hsl(222, 47%, 24%) 100%); color: white; padding: 24px 28px; border-radius: 12px; margin-bottom: 24px; }
-    .stat-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 18px; flex: 1; min-width: 140px; }
-    .stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; font-weight: 600; }
-    .stat-value { font-size: 24px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; color: #0f172a; }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 16px 20px; color: #0f172a; background: #ffffff; font-size: 11px; }
+    .header { display: flex; align-items: center; justify-content: space-between; background: linear-gradient(135deg, hsl(222, 47%, 16%) 0%, hsl(222, 47%, 24%) 100%); color: white; padding: 10px 16px; border-radius: 6px; margin-bottom: 10px; }
+    .header-title { font-size: 14px; font-weight: 700; }
+    .header-sub { font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.75; font-weight: 600; }
+    .header-date { font-size: 11px; opacity: 0.92; }
+    .kpi-bar { display: flex; gap: 8px; margin-bottom: 12px; }
+    .kpi { flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 5px; padding: 6px 10px; }
+    .kpi-label { font-size: 8px; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; font-weight: 600; }
+    .kpi-value { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; margin-top: 1px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .driver-card { border: 1px solid #e2e8f0; border-radius: 5px; overflow: hidden; break-inside: avoid; page-break-inside: avoid; }
+    .driver-head { display: flex; justify-content: space-between; align-items: center; padding: 5px 8px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
+    .driver-name { font-weight: 700; font-size: 11px; color: #0f172a; }
+    .driver-stats { display: flex; gap: 4px; }
+    .cars-pill { background: #e2e8f0; color: #334155; font-size: 9px; font-weight: 600; padding: 1px 6px; border-radius: 9999px; font-variant-numeric: tabular-nums; }
+    .pay-pill { background: #d1fae5; color: #065f46; font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 9999px; font-variant-numeric: tabular-nums; }
+    .stop-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+    .stop-table tr { border-bottom: 1px solid #f1f5f9; }
+    .stop-table tr:last-child { border-bottom: none; }
+    .footer { margin-top: 8px; font-size: 8px; color: #94a3b8; text-align: center; padding-top: 4px; border-top: 1px solid #f1f5f9; }
   </style>
 </head>
 <body>
-  <div class="header-band">
-    <div style="font-size:11px;letter-spacing:0.15em;text-transform:uppercase;opacity:0.7;font-weight:600;">Monroe Auto Transport</div>
-    <div style="font-size:22px;font-weight:700;margin-top:4px;">Driver Recap</div>
-    <div style="font-size:14px;opacity:0.85;margin-top:2px;">${escapeHtml(heading)}</div>
+  <div class="header">
+    <div>
+      <div class="header-sub">Monroe Auto Transport · Driver Recap</div>
+      <div class="header-title">${escapeHtml(heading)}</div>
+    </div>
+    <div class="header-date">Generated ${escapeHtml(new Date().toLocaleString())}</div>
   </div>
 
-  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:24px;">
-    <div class="stat-card"><div class="stat-label">Cars Moved</div><div class="stat-value">${totalCars}</div></div>
-    <div class="stat-card"><div class="stat-label">Completed</div><div class="stat-value">${completedCars}</div></div>
-    <div class="stat-card"><div class="stat-label">Held / Split</div><div class="stat-value">${heldCars}</div></div>
-    ${totalPay !== null ? `<div class="stat-card"><div class="stat-label">Total Pay</div><div class="stat-value" style="color:#047857;">${fmtCurrency(totalPay)}</div></div>` : ""}
+  <div class="kpi-bar">
+    <div class="kpi"><div class="kpi-label">Cars Moved</div><div class="kpi-value">${totalCars}</div></div>
+    <div class="kpi"><div class="kpi-label">Completed</div><div class="kpi-value" style="color:#047857;">${completedCars}</div></div>
+    <div class="kpi"><div class="kpi-label">Held / Split</div><div class="kpi-value" style="color:#d97706;">${heldCars}</div></div>
+    ${totalPay !== null ? `<div class="kpi"><div class="kpi-label">Total Pay</div><div class="kpi-value" style="color:#047857;">${fmtCurrency(totalPay)}</div></div>` : ""}
   </div>
 
-  ${driverSections || '<p style="color:#94a3b8;text-align:center;padding:40px;">No driver activity recorded for this day.</p>'}
+  <div class="grid">${driverSections || '<p style="color:#94a3b8;text-align:center;padding:40px;grid-column:1/-1;">No driver activity recorded.</p>'}</div>
 
-  <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;text-align:center;">
-    Generated ${escapeHtml(new Date().toLocaleString())} · Monroe Auto Transport Fleet Manager
-  </div>
+  <div class="footer">Monroe Auto Transport Fleet Manager</div>
 </body>
 </html>`;
 }
