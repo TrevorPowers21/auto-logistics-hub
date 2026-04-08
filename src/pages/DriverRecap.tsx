@@ -420,35 +420,6 @@ export default function DriverRecapPage() {
             ))}
           </div>
 
-          {/* Pickup / Dropoff recap — moved to bottom */}
-          <div className="grid gap-4 lg:grid-cols-2 pt-2">
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Pickup Recap</CardTitle>
-                <CardDescription>Cars grouped by pickup location</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {pickupRecap.length > 0 ? pickupRecap.map((item) => (
-                  <LocationRow key={item.location} location={item.location} cars={item.cars} />
-                )) : (
-                  <p className="text-sm text-muted-foreground">No pickup data for this date.</p>
-                )}
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">Drop-off Recap</CardTitle>
-                <CardDescription>Cars grouped by final delivered or split location</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {dropoffRecap.length > 0 ? dropoffRecap.map((item) => (
-                  <LocationRow key={item.location} location={item.location} cars={item.cars} />
-                )) : (
-                  <p className="text-sm text-muted-foreground">No drop-off data for this date.</p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
         </TabsContent>
 
         {/* ───────────── WEEKLY TAB ───────────── */}
@@ -579,6 +550,36 @@ export default function DriverRecapPage() {
         {/* ───────────── ANALYTICS TAB ───────────── */}
         <TabsContent value="analytics" className="space-y-6 mt-0">
           <DriverAnalyticsTab boards={boards} drivers={drivers} loads={getLoads()} referenceDate={date} />
+
+          {/* Pickup / Dropoff totals for the selected date */}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Pickup Recap</CardTitle>
+                <CardDescription>Cars grouped by pickup location for {format(new Date(`${date}T12:00:00`), "MMM d")}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {pickupRecap.length > 0 ? pickupRecap.map((item) => (
+                  <LocationRow key={item.location} location={item.location} cars={item.cars} />
+                )) : (
+                  <p className="text-sm text-muted-foreground">No pickup data for this date.</p>
+                )}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Drop-off Recap</CardTitle>
+                <CardDescription>Cars grouped by final delivered or split location</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {dropoffRecap.length > 0 ? dropoffRecap.map((item) => (
+                  <LocationRow key={item.location} location={item.location} cars={item.cars} />
+                )) : (
+                  <p className="text-sm text-muted-foreground">No drop-off data for this date.</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>
