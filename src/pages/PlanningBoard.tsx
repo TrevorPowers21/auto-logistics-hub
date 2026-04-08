@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/sonner";
 import { useStoreData } from "@/hooks/use-store";
 import {
-  generateId, getDrivers, getDriverBoards, getLocations, getAddresses, getPlanningSlots, savePlanningSlots,
+  generateId, getDrivers, getDriverBoards, saveDriverBoards, getLocations, getAddresses, getPlanningSlots, savePlanningSlots,
   getLoads, saveLoads, getCars, saveCars, saveLocations, saveAddresses,
 } from "@/lib/store";
 import { syncLoadsToPlanning } from "@/pages/Loads";
@@ -223,7 +223,8 @@ export default function PlanningBoardPage() {
   };
 
   // Unfinalize: deletes the linked Load (and unlinks its cars), clears the slot's loadId,
-  // and resets confirmed=false. The planning slot itself stays.
+  // resets confirmed=false, and removes any saved board-stop override for this slot.
+  // The planning slot itself stays.
   const unfinalizeSlot = (slotId: string) => {
     const slot = allSlots.find((s) => s.id === slotId);
     if (!slot?.loadId) return;
@@ -235,10 +236,18 @@ export default function PlanningBoardPage() {
       saveCars(currentCars.map((c) => c.loadId === slot.loadId ? { ...c, loadId: undefined, status: "at_shop" } : c));
     }
     savePlanningSlots(allSlots.map((s) => s.id === slotId ? { ...s, loadId: undefined, confirmed: false } : s));
+    // Remove any board-stop override that referenced this plan slot
+    const planStopId = `plan-${slotId}`;
+    const currentBoards = getDriverBoards();
+    saveDriverBoards(currentBoards.map((b) => {
+      if (!b.stops?.some((s) => s.id === planStopId)) return b;
+      return { ...b, stops: b.stops.filter((s) => s.id !== planStopId) };
+    }));
   };
 
   // Unfinalize all loads for a given day — wipes EVERY load with that pickup date,
-  // including orphans not linked to slots, so refinalize starts from a clean slate.
+  // including orphans not linked to slots, AND clears any saved driver board entries
+  // for that date so the recap is also reset.
   const unfinalizeDay = (dateStr: string) => {
     const currentLoads = getLoads();
     const loadsForDay = currentLoads.filter((l) => l.pickupDate === dateStr);
@@ -249,6 +258,9 @@ export default function PlanningBoardPage() {
     const currentCars = getCars();
     saveCars(currentCars.map((c) => c.loadId && loadIdsToDelete.has(c.loadId) ? { ...c, loadId: undefined, status: "at_shop" } : c));
     savePlanningSlots(allSlots.map((s) => loadIdsToDelete.has(s.loadId || "") ? { ...s, loadId: undefined, confirmed: false } : s));
+    // Clear all driver board entries for that day so the recap shows nothing stale
+    const currentBoards = getDriverBoards();
+    saveDriverBoards(currentBoards.filter((b) => b.date !== dateStr));
     toast(`${loadsForDay.length} load${loadsForDay.length === 1 ? "" : "s"} unfinalized`);
   };
 
