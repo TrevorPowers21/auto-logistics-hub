@@ -3,7 +3,6 @@ import {
   Users,
   Truck,
   DollarSign,
-  FileText,
   CarFront,
   ClipboardList,
   MapPinned,
@@ -15,7 +14,6 @@ import {
   Building2,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
-import { useLocation } from "react-router-dom";
 import {
   Sidebar,
   SidebarContent,
