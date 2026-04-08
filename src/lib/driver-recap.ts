@@ -408,22 +408,6 @@ export function buildDailyExportText(
       `;
     }).join("");
 
-  const recapColumns = (title: string, rows: Array<{ location: string; cars: number }>) => `
-    <div style="flex:1;min-width:220px;">
-      <h3 style="margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;font-weight:700;">${title}</h3>
-      ${rows.length === 0 ? '<p style="color:#94a3b8;font-size:13px;">None</p>' : `
-        <table style="width:100%;border-collapse:collapse;font-size:13px;">
-          ${rows.map((r) => `
-            <tr style="border-bottom:1px solid #f1f5f9;">
-              <td style="padding:6px 4px;color:#0f172a;">${escapeHtml(r.location)}</td>
-              <td style="padding:6px 4px;text-align:right;font-variant-numeric:tabular-nums;color:#475569;">${r.cars} car${r.cars === 1 ? "" : "s"}</td>
-            </tr>
-          `).join("")}
-        </table>
-      `}
-    </div>
-  `;
-
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -453,11 +437,6 @@ export function buildDailyExportText(
   </div>
 
   ${driverSections || '<p style="color:#94a3b8;text-align:center;padding:40px;">No driver activity recorded for this day.</p>'}
-
-  <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:32px;padding-top:24px;border-top:1px solid #e2e8f0;">
-    ${recapColumns("Pickup Locations", pickupRecap)}
-    ${recapColumns("Drop-off Locations", dropoffRecap)}
-  </div>
 
   <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;text-align:center;">
     Generated ${escapeHtml(new Date().toLocaleString())} · Monroe Auto Transport Fleet Manager
