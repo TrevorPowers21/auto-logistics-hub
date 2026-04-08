@@ -730,10 +730,16 @@ function SlotDialog({
   );
   const selectedCustomer = customerOptions.find((l) => l.code === customer);
 
-  const filteredAddresses = (search: string) =>
-    addressOptions.filter((a) =>
-      !search || a.name.toUpperCase().includes(search.toUpperCase()) || a.city.toUpperCase().includes(search.toUpperCase()),
-    ).slice(0, 20);
+  const filteredAddresses = (search: string) => {
+    const q = search.toUpperCase();
+    const addrMatches = addressOptions
+      .filter((a) => !search || a.name.toUpperCase().includes(q) || a.city.toUpperCase().includes(q))
+      .map((a) => ({ id: a.id, name: a.name, sub: a.city ? `${a.city}${a.state ? `, ${a.state}` : ""}` : "", type: "address" as const }));
+    const custMatches = customerOptions
+      .filter((c) => !search || c.name.toUpperCase().includes(q) || c.code.includes(q))
+      .map((c) => ({ id: `cust-${c.id}`, name: c.name, sub: c.code, type: "customer" as const }));
+    return [...addrMatches, ...custMatches].slice(0, 20);
+  };
 
   const canCreatePickup = pickupSearch.trim().length > 0 && !addressOptions.some((a) => a.name.toUpperCase() === pickupSearch.trim().toUpperCase());
   const canCreateDelivery = deliverySearch.trim().length > 0 && !addressOptions.some((a) => a.name.toUpperCase() === deliverySearch.trim().toUpperCase());
@@ -841,7 +847,7 @@ function SlotDialog({
                           className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/60 ${pickup === a.name ? "bg-muted" : ""}`}
                           onMouseDown={(e) => { e.preventDefault(); setPickup(a.name); setPickupSearch(""); }}>
                           <span className="font-medium">{a.name}</span>
-                          {a.city && <span className="text-muted-foreground ml-2 text-xs">{a.city}, {a.state}</span>}
+                          {a.sub && <span className="text-muted-foreground ml-2 text-xs">{a.sub}</span>}
                         </button>
                       ))}
                       {canCreatePickup && (
@@ -873,7 +879,7 @@ function SlotDialog({
                           className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/60 ${delivery === a.name ? "bg-muted" : ""}`}
                           onMouseDown={(e) => { e.preventDefault(); setDelivery(a.name); setDeliverySearch(""); }}>
                           <span className="font-medium">{a.name}</span>
-                          {a.city && <span className="text-muted-foreground ml-2 text-xs">{a.city}, {a.state}</span>}
+                          {a.sub && <span className="text-muted-foreground ml-2 text-xs">{a.sub}</span>}
                         </button>
                       ))}
                       {canCreateDelivery && (

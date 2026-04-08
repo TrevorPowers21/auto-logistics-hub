@@ -493,8 +493,9 @@ export default function LoadsPage() {
                     value={newPickup}
                     onChange={setNewPickup}
                     options={addressOptions}
+                    customers={customerOptions}
                     onCreate={handleCreateAddress}
-                    placeholder="Search address..."
+                    placeholder="Search address or customer..."
                   />
                 </div>
                 <div>
@@ -503,8 +504,9 @@ export default function LoadsPage() {
                     value={newDelivery}
                     onChange={setNewDelivery}
                     options={addressOptions}
+                    customers={customerOptions}
                     onCreate={handleCreateAddress}
-                    placeholder="Search address..."
+                    placeholder="Search address or customer..."
                   />
                 </div>
                 {/* Pickup date — calendar */}
@@ -924,11 +926,11 @@ function LoadEditDialog({
             </div>
             <div>
               <Label>Pickup Address</Label>
-              <AddressSearchInput value={pickup} onChange={setPickup} options={addressOptions} onCreate={onCreateAddress} placeholder="Search address..." />
+              <AddressSearchInput value={pickup} onChange={setPickup} options={addressOptions} customers={customerOptions} onCreate={onCreateAddress} placeholder="Search address or customer..." />
             </div>
             <div>
               <Label>Delivery Address</Label>
-              <AddressSearchInput value={delivery} onChange={setDelivery} options={addressOptions} onCreate={onCreateAddress} placeholder="Search address..." />
+              <AddressSearchInput value={delivery} onChange={setDelivery} options={addressOptions} customers={customerOptions} onCreate={onCreateAddress} placeholder="Search address or customer..." />
             </div>
             <div>
               <Label>Driver</Label>
@@ -1196,13 +1198,14 @@ function CustomerSearchInput({
 // ─── Address Search (for pickup/delivery) ─────────────────────────────────────
 
 function AddressSearchInput({
-  value, onChange, options, onCreate, placeholder,
+  value, onChange, options, onCreate, placeholder, customers,
 }: {
   value: string;
   onChange: (name: string) => void;
   options: Address[];
   onCreate: (raw: string) => string;
   placeholder: string;
+  customers?: LocationProfile[];
 }) {
   const [search, setSearch] = useState("");
   const [focused, setFocused] = useState(false);
@@ -1212,16 +1215,23 @@ function AddressSearchInput({
     ? (selected.city ? `${selected.name}, ${selected.city} ${selected.state}` : selected.name)
     : value;
 
-  const filtered = options.filter((a) =>
-    !search ||
-    a.name.toUpperCase().includes(search.toUpperCase()) ||
-    a.city.toUpperCase().includes(search.toUpperCase()) ||
-    a.line1.toUpperCase().includes(search.toUpperCase()),
-  ).slice(0, 20);
+  const q = search.toUpperCase();
+  const addrMatches = options
+    .filter((a) =>
+      !search ||
+      a.name.toUpperCase().includes(q) ||
+      a.city.toUpperCase().includes(q) ||
+      a.line1.toUpperCase().includes(q),
+    )
+    .map((a) => ({ id: a.id, name: a.name, sub: a.city ? `${a.city}${a.state ? `, ${a.state}` : ""}` : "" }));
+  const custMatches = (customers || [])
+    .filter((c) => !search || c.name.toUpperCase().includes(q) || c.code.includes(q))
+    .map((c) => ({ id: `cust-${c.id}`, name: c.name, sub: c.code }));
+  const filtered = [...addrMatches, ...custMatches].slice(0, 20);
 
   const canCreate = search.trim().length > 0 && !options.some((a) =>
     a.name.toUpperCase() === search.trim().toUpperCase(),
-  );
+  ) && !(customers || []).some((c) => c.name.toUpperCase() === search.trim().toUpperCase());
 
   return (
     <div className="relative">
@@ -1242,7 +1252,7 @@ function AddressSearchInput({
               onMouseDown={(e) => { e.preventDefault(); onChange(a.name); setFocused(false); setSearch(""); }}
             >
               <span className="font-medium">{a.name}</span>
-              {a.city && <span className="text-muted-foreground ml-2 text-xs">{a.city}, {a.state}</span>}
+              {a.sub && <span className="text-muted-foreground ml-2 text-xs">{a.sub}</span>}
             </button>
           ))}
           {canCreate && (
