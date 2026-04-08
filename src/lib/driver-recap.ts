@@ -264,6 +264,20 @@ export function getBoardTokens(entries: DriverBoardEntry[]): string[] {
 }
 
 /** Build a formatted daily recap export string. */
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+}
+
+function statusBadge(status: string): string {
+  const map: Record<string, { bg: string; fg: string; label: string }> = {
+    completed: { bg: "#d1fae5", fg: "#065f46", label: "Completed" },
+    overnight: { bg: "#fef3c7", fg: "#92400e", label: "Overnight" },
+    split: { bg: "#ede9fe", fg: "#5b21b6", label: "Split" },
+  };
+  const s = map[status] || map.completed;
+  return `<span style="display:inline-block;padding:2px 8px;border-radius:9999px;font-size:10px;font-weight:600;background:${s.bg};color:${s.fg};">${s.label}</span>`;
+}
+
 export function buildDailyExportText(
   date: string,
   driverRows: Array<{
@@ -276,10 +290,9 @@ export function buildDailyExportText(
   }>,
   pickupRecap: Array<{ location: string; cars: number }>,
   dropoffRecap: Array<{ location: string; cars: number }>,
+  customerLookup?: (code: string) => string,
 ): string {
-  const divider = "─".repeat(60);
   const heading = formatRecapHeading(date);
-
   const totalCars = driverRows.reduce((s, r) => s + r.totalCars, 0);
   const completedCars = driverRows.reduce((s, r) => s + r.completedCars, 0);
   const heldCars = driverRows.reduce((s, r) => s + r.heldCars, 0);
@@ -288,72 +301,115 @@ export function buildDailyExportText(
     ? totalPayRows.reduce((s, r) => s + (r.totalPay ?? 0), 0)
     : null;
 
-  const lines: string[] = [
-    "MONROE AUTO TRANSPORT",
-    `DRIVER RECAP  —  ${heading}`,
-    divider,
-    "",
-    "DAILY TOTALS",
-    `  Cars Moved:   ${totalCars}   |   Completed: ${completedCars}   |   Split: ${heldCars}`,
-    totalPay !== null ? `  Total Pay:    $${totalPay.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : "",
-    "",
-  ];
+  const fmtCurrency = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const resolveCustomer = (code?: string) => {
+    if (!code) return "";
+    return customerLookup ? customerLookup(code) : code;
+  };
 
-  // Pickup/dropoff recap side by side
-  const maxLeft = Math.max(...pickupRecap.map((r) => r.location.length), 8);
-  lines.push("PICKUP LOCATIONS" + " ".repeat(maxLeft - 8 + 6) + "DROP-OFF LOCATIONS");
-  const maxRows = Math.max(pickupRecap.length, dropoffRecap.length);
-  for (let i = 0; i < maxRows; i++) {
-    const pu = pickupRecap[i];
-    const do_ = dropoffRecap[i];
-    const left = pu ? `  ${pu.location.padEnd(maxLeft + 2)} ${String(pu.cars).padStart(2)} car${pu.cars === 1 ? " " : "s"}` : "";
-    const right = do_ ? `    ${do_.location.padEnd(maxLeft + 2)} ${String(do_.cars).padStart(2)} car${do_.cars === 1 ? "" : "s"}` : "";
-    lines.push(left + right);
-  }
+  const driverSections = driverRows
+    .filter((row) => row.stops.length > 0)
+    .map((row) => {
+      const stopRows = row.stops.map((stop) => {
+        const endLoc = stop.status === "overnight" ? (stop.overnightLocation || stop.dropoffLocation) : stop.dropoffLocation;
+        const stopPay = getStopPay(stop, row.driver.payRatePerCar);
+        const customer = resolveCustomer(stop.customer);
+        return `
+          <tr>
+            <td style="padding:8px 12px;text-align:center;font-weight:600;font-variant-numeric:tabular-nums;">${stop.carCount}</td>
+            <td style="padding:8px 12px;">${escapeHtml(customer || "—")}</td>
+            <td style="padding:8px 12px;color:#475569;">${escapeHtml(stop.pickupLocation || "—")} <span style="color:#94a3b8;">→</span> ${escapeHtml(endLoc || "—")}</td>
+            <td style="padding:8px 12px;text-align:center;">${statusBadge(stop.status)}</td>
+            <td style="padding:8px 12px;text-align:right;font-variant-numeric:tabular-nums;color:#047857;font-weight:600;">${stopPay !== null ? fmtCurrency(stopPay) : "—"}</td>
+          </tr>
+          ${stop.notes ? `<tr><td colspan="5" style="padding:0 12px 8px;color:#94a3b8;font-style:italic;font-size:12px;">${escapeHtml(stop.notes)}</td></tr>` : ""}
+        `;
+      }).join("");
 
-  lines.push("");
-  lines.push(divider);
-  lines.push("");
+      return `
+        <div style="margin-bottom:24px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;">
+            <div>
+              <div style="font-weight:700;font-size:15px;color:#0f172a;">${escapeHtml(row.driver.name)}</div>
+              <div style="font-size:11px;color:#64748b;margin-top:2px;">${row.totalCars} cars${row.heldCars > 0 ? ` · ${row.heldCars} held` : ""}</div>
+            </div>
+            ${row.totalPay !== null ? `<div style="font-weight:700;color:#047857;font-size:16px;font-variant-numeric:tabular-nums;">${fmtCurrency(row.totalPay)}</div>` : ""}
+          </div>
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead>
+              <tr style="background:#f8fafc;color:#64748b;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;">
+                <th style="padding:6px 12px;text-align:center;font-weight:600;">Cars</th>
+                <th style="padding:6px 12px;text-align:left;font-weight:600;">Customer</th>
+                <th style="padding:6px 12px;text-align:left;font-weight:600;">Route</th>
+                <th style="padding:6px 12px;text-align:center;font-weight:600;">Status</th>
+                <th style="padding:6px 12px;text-align:right;font-weight:600;">Pay</th>
+              </tr>
+            </thead>
+            <tbody>${stopRows}</tbody>
+          </table>
+        </div>
+      `;
+    }).join("");
 
-  // Per-driver detail
-  for (const row of driverRows) {
-    if (row.stops.length === 0) continue;
+  const recapColumns = (title: string, rows: Array<{ location: string; cars: number }>) => `
+    <div style="flex:1;min-width:220px;">
+      <h3 style="margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;font-weight:700;">${title}</h3>
+      ${rows.length === 0 ? '<p style="color:#94a3b8;font-size:13px;">None</p>' : `
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          ${rows.map((r) => `
+            <tr style="border-bottom:1px solid #f1f5f9;">
+              <td style="padding:6px 4px;color:#0f172a;">${escapeHtml(r.location)}</td>
+              <td style="padding:6px 4px;text-align:right;font-variant-numeric:tabular-nums;color:#475569;">${r.cars} car${r.cars === 1 ? "" : "s"}</td>
+            </tr>
+          `).join("")}
+        </table>
+      `}
+    </div>
+  `;
 
-    const payStr = row.totalPay !== null
-      ? `  $${row.totalPay.toLocaleString("en-US", { minimumFractionDigits: 2 })}`
-      : "";
-    lines.push(`${row.driver.name.toUpperCase()}  —  ${row.totalCars} cars${payStr}`);
-    lines.push("  " + "─".repeat(56));
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Driver Recap — ${escapeHtml(heading)}</title>
+  <style>
+    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 900px; margin: 0 auto; padding: 32px 24px; color: #0f172a; background: #ffffff; }
+    .header-band { background: linear-gradient(135deg, hsl(222, 47%, 16%) 0%, hsl(222, 47%, 24%) 100%); color: white; padding: 24px 28px; border-radius: 12px; margin-bottom: 24px; }
+    .stat-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 18px; flex: 1; min-width: 140px; }
+    .stat-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; font-weight: 600; }
+    .stat-value { font-size: 24px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; color: #0f172a; }
+  </style>
+</head>
+<body>
+  <div class="header-band">
+    <div style="font-size:11px;letter-spacing:0.15em;text-transform:uppercase;opacity:0.7;font-weight:600;">Monroe Auto Transport</div>
+    <div style="font-size:22px;font-weight:700;margin-top:4px;">Driver Recap</div>
+    <div style="font-size:14px;opacity:0.85;margin-top:2px;">${escapeHtml(heading)}</div>
+  </div>
 
-    for (const stop of row.stops) {
-      const endLoc = stop.status === "overnight" ? (stop.overnightLocation || stop.dropoffLocation) : stop.dropoffLocation;
-      const route = `${stop.pickupLocation} → ${endLoc}`;
-      const statusStr = stop.status === "completed" ? "Completed" : stop.status === "overnight" ? "Overnight" : "Split    ";
-      const rateStr = stop.payRatePerCar !== undefined
-        ? `$${stop.payRatePerCar}/car`
-        : (row.driver.payRatePerCar !== undefined ? `$${row.driver.payRatePerCar}/car` : "");
-      const stopPay = getStopPay(stop, row.driver.payRatePerCar);
-      const stopPayStr = stopPay !== null
-        ? `  $${stopPay.toLocaleString("en-US", { minimumFractionDigits: 2 })}`
-        : "";
-      const notesStr = stop.notes ? `  (${stop.notes})` : "";
+  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:24px;">
+    <div class="stat-card"><div class="stat-label">Cars Moved</div><div class="stat-value">${totalCars}</div></div>
+    <div class="stat-card"><div class="stat-label">Completed</div><div class="stat-value">${completedCars}</div></div>
+    <div class="stat-card"><div class="stat-label">Held / Split</div><div class="stat-value">${heldCars}</div></div>
+    ${totalPay !== null ? `<div class="stat-card"><div class="stat-label">Total Pay</div><div class="stat-value" style="color:#047857;">${fmtCurrency(totalPay)}</div></div>` : ""}
+  </div>
 
-      lines.push(
-        `  ${String(stop.carCount).padStart(2)} cars  ${route.padEnd(30)}  ${statusStr}  ${rateStr}${stopPayStr}${notesStr}`,
-      );
-    }
+  ${driverSections || '<p style="color:#94a3b8;text-align:center;padding:40px;">No driver activity recorded for this day.</p>'}
 
-    lines.push("");
-  }
+  <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:32px;padding-top:24px;border-top:1px solid #e2e8f0;">
+    ${recapColumns("Pickup Locations", pickupRecap)}
+    ${recapColumns("Drop-off Locations", dropoffRecap)}
+  </div>
 
-  lines.push(divider);
-  lines.push(`Generated: ${new Date().toLocaleString()}`);
-  lines.push("Monroe Auto Transport Fleet Manager");
-
-  return lines.filter((l) => l !== undefined).join("\n");
+  <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;text-align:center;">
+    Generated ${escapeHtml(new Date().toLocaleString())} · Monroe Auto Transport Fleet Manager
+  </div>
+</body>
+</html>`;
 }
 
-/** Build a formatted weekly recap export string. */
+/** Build a formatted weekly recap export as HTML. */
 export function buildWeeklyExportText(
   weekStart: string,
   weekEnd: string,
@@ -361,16 +417,15 @@ export function buildWeeklyExportText(
   drivers: Driver[],
   boards: DriverBoardEntry[],
 ): string {
-  const divider = "─".repeat(80);
   const startLabel = new Date(`${weekStart}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const endLabel = new Date(`${weekEnd}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   const dayNames = weekDates.map((d) =>
-    new Date(`${d}T12:00:00`).toLocaleDateString("en-US", { weekday: "short" }),
+    new Date(`${d}T12:00:00`).toLocaleDateString("en-US", { weekday: "short", month: "numeric", day: "numeric" }),
   );
 
   const activeDrivers = drivers.filter((d) => d.status !== "inactive");
+  const fmtCurrency = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-  // Build per-driver per-day stats
   const driverStats = activeDrivers.map((driver) => {
     const dayCars = weekDates.map((date) => {
       const board = boards.find((b) => b.driverId === driver.id && b.date === date);
@@ -389,34 +444,6 @@ export function buildWeeklyExportText(
     return { driver, dayCars, dayPay, totalCars, totalPay };
   }).filter((r) => r.totalCars > 0);
 
-  const lines: string[] = [
-    "MONROE AUTO TRANSPORT",
-    `WEEKLY RECAP  —  ${startLabel} – ${endLabel}`,
-    divider,
-    "",
-  ];
-
-  // Header row
-  const nameWidth = 22;
-  const dayWidth = 6;
-  const header = "DRIVER".padEnd(nameWidth) +
-    dayNames.map((d) => d.padStart(dayWidth)).join("") +
-    "  TOTAL".padStart(8) +
-    "  PAY".padStart(14);
-  lines.push(header);
-  lines.push("─".repeat(header.length));
-
-  for (const row of driverStats) {
-    const name = row.driver.name.slice(0, nameWidth - 1).padEnd(nameWidth);
-    const days = row.dayCars.map((c) => String(c || "—").padStart(dayWidth)).join("");
-    const total = String(row.totalCars).padStart(8);
-    const payStr = row.totalPay !== null
-      ? `$${row.totalPay.toLocaleString("en-US", { minimumFractionDigits: 2 })}`.padStart(14)
-      : "—".padStart(14);
-    lines.push(name + days + total + payStr);
-  }
-
-  // Fleet totals row
   const fleetCars = weekDates.map((_, i) => driverStats.reduce((s, r) => s + r.dayCars[i], 0));
   const fleetTotal = fleetCars.reduce((s, c) => s + c, 0);
   const fleetPayRows = driverStats.filter((r) => r.totalPay !== null);
@@ -424,20 +451,62 @@ export function buildWeeklyExportText(
     ? fleetPayRows.reduce((s, r) => s + (r.totalPay ?? 0), 0)
     : null;
 
-  lines.push("─".repeat(header.length));
-  lines.push(
-    "FLEET TOTAL".padEnd(nameWidth) +
-    fleetCars.map((c) => String(c || "—").padStart(dayWidth)).join("") +
-    String(fleetTotal).padStart(8) +
-    (fleetPay !== null
-      ? `$${fleetPay.toLocaleString("en-US", { minimumFractionDigits: 2 })}`.padStart(14)
-      : "—".padStart(14)),
-  );
+  const dayHeaders = dayNames.map((d) => `<th style="padding:8px 6px;text-align:center;font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;">${escapeHtml(d)}</th>`).join("");
 
-  lines.push("");
-  lines.push(divider);
-  lines.push(`Generated: ${new Date().toLocaleString()}`);
-  lines.push("Monroe Auto Transport Fleet Manager");
+  const driverRows = driverStats.map((row) => `
+    <tr style="border-bottom:1px solid #f1f5f9;">
+      <td style="padding:10px 12px;font-weight:600;color:#0f172a;">${escapeHtml(row.driver.name)}</td>
+      ${row.dayCars.map((c) => `<td style="padding:10px 6px;text-align:center;font-variant-numeric:tabular-nums;color:${c > 0 ? "#0f172a" : "#cbd5e1"};">${c > 0 ? c : "—"}</td>`).join("")}
+      <td style="padding:10px 12px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums;color:#0f172a;">${row.totalCars}</td>
+      <td style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums;color:#047857;font-weight:600;">${row.totalPay !== null ? fmtCurrency(row.totalPay) : "—"}</td>
+    </tr>
+  `).join("");
 
-  return lines.join("\n");
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Weekly Recap — ${escapeHtml(startLabel)} to ${escapeHtml(endLabel)}</title>
+  <style>
+    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 1100px; margin: 0 auto; padding: 32px 24px; color: #0f172a; background: #ffffff; }
+    .header-band { background: linear-gradient(135deg, hsl(222, 47%, 16%) 0%, hsl(222, 47%, 24%) 100%); color: white; padding: 24px 28px; border-radius: 12px; margin-bottom: 24px; }
+  </style>
+</head>
+<body>
+  <div class="header-band">
+    <div style="font-size:11px;letter-spacing:0.15em;text-transform:uppercase;opacity:0.7;font-weight:600;">Monroe Auto Transport</div>
+    <div style="font-size:22px;font-weight:700;margin-top:4px;">Weekly Recap</div>
+    <div style="font-size:14px;opacity:0.85;margin-top:2px;">${escapeHtml(startLabel)} – ${escapeHtml(endLabel)}</div>
+  </div>
+
+  <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead style="background:#f8fafc;">
+        <tr style="border-bottom:2px solid #e2e8f0;">
+          <th style="padding:10px 12px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;font-weight:700;">Driver</th>
+          ${dayHeaders}
+          <th style="padding:10px 12px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;font-weight:700;">Total</th>
+          <th style="padding:10px 12px;text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;font-weight:700;">Pay</th>
+        </tr>
+      </thead>
+      <tbody>${driverRows || '<tr><td colspan="' + (weekDates.length + 3) + '" style="padding:32px;text-align:center;color:#94a3b8;">No activity for this week.</td></tr>'}</tbody>
+      ${driverStats.length > 0 ? `
+        <tfoot style="background:#f8fafc;border-top:2px solid #e2e8f0;">
+          <tr>
+            <td style="padding:12px;font-weight:700;text-transform:uppercase;font-size:11px;color:#0f172a;letter-spacing:0.05em;">Fleet Total</td>
+            ${fleetCars.map((c) => `<td style="padding:12px 6px;text-align:center;font-weight:700;font-variant-numeric:tabular-nums;color:#0f172a;">${c > 0 ? c : "—"}</td>`).join("")}
+            <td style="padding:12px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums;color:#0f172a;">${fleetTotal}</td>
+            <td style="padding:12px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums;color:#047857;">${fleetPay !== null ? fmtCurrency(fleetPay) : "—"}</td>
+          </tr>
+        </tfoot>
+      ` : ""}
+    </table>
+  </div>
+
+  <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;text-align:center;">
+    Generated ${escapeHtml(new Date().toLocaleString())} · Monroe Auto Transport Fleet Manager
+  </div>
+</body>
+</html>`;
 }

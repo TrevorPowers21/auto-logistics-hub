@@ -311,14 +311,16 @@ export default function DriverRecapPage() {
     return next.name;
   };
 
+  const customerLookup = (code: string) => locations.find((l) => l.code === code)?.name || code;
+
   const handleExportDay = () => {
-    const text = buildDailyExportText(date, driverRows, pickupRecap, dropoffRecap);
-    downloadText(text, `recap-${date}.txt`);
+    const html = buildDailyExportText(date, driverRows, pickupRecap, dropoffRecap, customerLookup);
+    downloadHtml(html, `recap-${date}.html`);
   };
 
   const handleExportWeek = () => {
-    const text = buildWeeklyExportText(weekStartStr, weekEndStr, weekDates, drivers, boards);
-    downloadText(text, `weekly-recap-${weekStartStr}.txt`);
+    const html = buildWeeklyExportText(weekStartStr, weekEndStr, weekDates, drivers, boards);
+    downloadHtml(html, `weekly-recap-${weekStartStr}.html`);
   };
 
   return (
@@ -915,6 +917,21 @@ function downloadText(text: string, filename: string) {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function downloadHtml(html: string, filename: string) {
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  // Open in a new tab so the user immediately sees the formatted report
+  const opened = window.open(url, "_blank");
+  if (!opened) {
+    // Popup blocked — fall back to download
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
 function MetricCard({ label, value, accent }: { label: string; value: string | number; accent?: string }) {
