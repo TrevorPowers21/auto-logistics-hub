@@ -29,7 +29,7 @@ const statusColor: Record<LoadStatus, string> = {
   dispatched: "bg-amber-100 text-amber-900 border-l-4 border-amber-500",
   in_transit: "bg-violet-100 text-violet-900 border-l-4 border-violet-500",
   delivered: "bg-emerald-100 text-emerald-900 border-l-4 border-emerald-500",
-  cancelled: "bg-red-100 text-red-900 border-l-4 border-red-500",
+  cancelled: "bg-slate-200 text-slate-700 border-l-4 border-slate-500 line-through",
 };
 
 const statusLabels: LoadStatus[] = ["booked", "dispatched", "in_transit", "delivered", "cancelled"];
@@ -715,7 +715,7 @@ export default function LoadsPage() {
                     in_transit: "delivered",
                   };
                   return (
-                    <TableRow key={l.id} className={`cursor-pointer ${incomplete ? "bg-red-50 shadow-[inset_0_0_0_2px_rgba(239,68,68,0.4)]" : "hover:bg-muted/50"}`} onClick={() => setDetailLoad(l)}>
+                    <TableRow key={l.id} className={`cursor-pointer ${incomplete ? "bg-red-50 shadow-[inset_0_0_0_2px_rgba(239,68,68,0.4)]" : "hover:bg-muted/50 transition-colors duration-150"}`} onClick={() => setDetailLoad(l)}>
                       <TableCell className="font-mono text-sm">{l.referenceNumber}</TableCell>
                       <TableCell className="font-medium">{customerDisplay(l.customer)}</TableCell>
                       <TableCell className="text-sm">{l.pickupLocation || "—"} → {l.deliveryLocation || "—"}</TableCell>

@@ -29,8 +29,8 @@ export default function Dashboard() {
   const totalCarsInTransit = loads.filter((l) => l.status === "in_transit").reduce((s, l) => s + (l.carIds?.length || 0), 0);
 
   const chartData = [
-    { name: "Revenue", value: totalRevenue, fill: "hsl(222, 47%, 16%)" },
-    { name: "Expenses", value: monthExpenses, fill: "hsl(0, 72%, 51%)" },
+    { name: "Revenue", value: totalRevenue, fill: "hsl(221, 65%, 15%)" },
+    { name: "Expenses", value: monthExpenses, fill: "hsl(351, 85%, 42%)" },
     { name: "Outstanding", value: outstandingInvoices, fill: "hsl(38, 92%, 50%)" },
   ];
 
@@ -237,9 +237,9 @@ function FleetTrackerMap({
               center={[vehicle.lastKnownLatitude as number, vehicle.lastKnownLongitude as number]}
               radius={8}
               pathOptions={{
-                color: "hsl(222, 47%, 16%)",
+                color: "hsl(221, 65%, 15%)",
                 weight: 2,
-                fillColor: isMoving ? "hsl(38, 92%, 50%)" : "hsl(222, 47%, 16%)",
+                fillColor: isMoving ? "hsl(38, 92%, 50%)" : "hsl(221, 65%, 15%)",
                 fillOpacity: 0.9,
               }}
             >

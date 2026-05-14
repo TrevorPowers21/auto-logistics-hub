@@ -71,7 +71,7 @@ export function AppSidebar() {
     <Sidebar collapsible="icon" className="border-r-0">
       <SidebarHeader className="px-4 py-5">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500 text-slate-900 font-extrabold text-sm tracking-tight">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[hsl(351_85%_42%)] text-white font-extrabold text-base tracking-tight italic" style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
             M
           </div>
           {!collapsed && (
@@ -101,8 +101,8 @@ export function AppSidebar() {
                       <NavLink
                         to={item.url}
                         end={item.url === "/"}
-                        className="hover:bg-sidebar-accent/60 transition-colors rounded-md"
-                        activeClassName="bg-sidebar-accent text-amber-400 font-medium"
+                        className="hover:bg-sidebar-accent/60 transition-colors duration-150 rounded-md"
+                        activeClassName="bg-sidebar-accent text-white border-l-2 border-[hsl(351_85%_50%)] font-semibold"
                       >
                         <item.icon className="h-4 w-4" />
                         {!collapsed && <span>{item.title}</span>}
@@ -122,8 +122,8 @@ export function AppSidebar() {
             <SidebarMenuButton asChild>
               <NavLink
                 to="/settings"
-                className="hover:bg-sidebar-accent/60 transition-colors rounded-md"
-                activeClassName="bg-sidebar-accent text-amber-400 font-medium"
+                className="hover:bg-sidebar-accent/60 transition-colors duration-150 rounded-md"
+                activeClassName="bg-sidebar-accent text-white border-l-2 border-[hsl(351_85%_50%)] font-semibold"
               >
                 <Settings className="h-4 w-4" />
                 {!collapsed && <span>Settings</span>}

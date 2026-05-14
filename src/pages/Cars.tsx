@@ -336,7 +336,7 @@ export default function CarsPage() {
                   return (
                     <TableRow
                       key={car.id}
-                      className="cursor-pointer hover:bg-muted/50"
+                      className="cursor-pointer hover:bg-muted/50 transition-colors duration-150"
                       onClick={() => handleEditOpen(car)}
                     >
                       <TableCell className="font-mono text-xs">{car.vin}</TableCell>

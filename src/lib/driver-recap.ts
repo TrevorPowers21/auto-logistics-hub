@@ -404,7 +404,7 @@ export function buildDailyExportText(
     @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
     * { box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 18px 22px; color: #0f172a; background: #ffffff; font-size: 13px; }
-    .header { display: flex; align-items: center; justify-content: space-between; background: linear-gradient(135deg, hsl(222, 47%, 16%) 0%, hsl(222, 47%, 24%) 100%); color: white; padding: 12px 18px; border-radius: 7px; margin-bottom: 12px; }
+    .header { display: flex; align-items: center; justify-content: space-between; background: linear-gradient(135deg, hsl(221, 65%, 14%) 0%, hsl(221, 60%, 22%) 100%); color: white; padding: 12px 18px; border-radius: 7px; margin-bottom: 12px; border-bottom: 3px solid hsl(351, 85%, 42%); }
     .header-title { font-size: 17px; font-weight: 700; }
     .header-sub { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.75; font-weight: 600; }
     .header-date { font-size: 11px; opacity: 0.92; }
@@ -506,7 +506,7 @@ export function buildWeeklyExportText(
   <style>
     @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 1100px; margin: 0 auto; padding: 32px 24px; color: #0f172a; background: #ffffff; }
-    .header-band { background: linear-gradient(135deg, hsl(222, 47%, 16%) 0%, hsl(222, 47%, 24%) 100%); color: white; padding: 24px 28px; border-radius: 12px; margin-bottom: 24px; }
+    .header-band { background: linear-gradient(135deg, hsl(221, 65%, 14%) 0%, hsl(221, 60%, 22%) 100%); color: white; padding: 24px 28px; border-radius: 12px; margin-bottom: 24px; border-bottom: 3px solid hsl(351, 85%, 42%); }
   </style>
 </head>
 <body>

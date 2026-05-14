@@ -283,7 +283,7 @@ export default function DriversPage() {
                   return (
                     <TableRow
                       key={d.id}
-                      className="cursor-pointer hover:bg-muted/40 transition-colors"
+                      className="cursor-pointer hover:bg-muted/40 transition-colors duration-150"
                       onClick={() => handleEditOpen(d)}
                     >
                       <TableCell>
@@ -350,7 +350,7 @@ export default function DriversPage() {
                 </TableHeader>
                 <TableBody>
                   {inactiveDrivers.map((d) => (
-                    <TableRow key={d.id} className="cursor-pointer hover:bg-muted/40 transition-colors" onClick={() => handleEditOpen(d)}>
+                    <TableRow key={d.id} className="cursor-pointer hover:bg-muted/40 transition-colors duration-150" onClick={() => handleEditOpen(d)}>
                       <TableCell className="font-medium">{d.name}</TableCell>
                       <TableCell className="text-sm">{d.phone}</TableCell>
                       <TableCell className="text-sm font-mono">{d.licenseNumber || "—"}</TableCell>
