@@ -1,4 +1,12 @@
-import { generateId, getAppSetting, saveAppSetting } from "@/lib/store";
+import {
+  generateId,
+  getAppSetting,
+  getDrivers,
+  getVehicles,
+  saveAppSetting,
+  saveDrivers,
+  saveVehicles,
+} from "@/lib/store";
 import { Driver, DriverStatus, Vehicle } from "@/lib/types";
 import { decodeVin } from "@/lib/vin";
 
@@ -307,3 +315,39 @@ function getLatestPoint<T extends { time: string }>(points?: T[]): T | undefined
 }
 
 export const samsaraStatTypes: SamsaraStatType[] = [...DEFAULT_STAT_TYPES];
+
+let samsaraAutoSyncInterval: ReturnType<typeof setInterval> | null = null;
+
+async function runSamsaraAutoSyncTick() {
+  const token = await getSavedSamsaraToken();
+  if (!token) return;
+
+  const vehicles = getVehicles();
+  const drivers = getDrivers();
+  const cursor = getAppSetting("samsara_cursor") || undefined;
+
+  const synced = await syncSamsaraFleetData(vehicles, drivers, cursor);
+  saveVehicles(synced.vehicles);
+  saveDrivers(synced.drivers);
+
+  if (synced.endCursor) {
+    saveAppSetting("samsara_cursor", synced.endCursor);
+  }
+  saveAppSetting("samsara_last_sync_at", new Date().toISOString());
+}
+
+export function startSamsaraAutoSync(intervalMs = 15 * 60 * 1000): void {
+  if (samsaraAutoSyncInterval) return;
+  samsaraAutoSyncInterval = setInterval(() => {
+    runSamsaraAutoSyncTick().catch((err) => {
+      console.warn("Samsara auto-sync failed:", err);
+    });
+  }, intervalMs);
+}
+
+export function stopSamsaraAutoSync(): void {
+  if (samsaraAutoSyncInterval) {
+    clearInterval(samsaraAutoSyncInterval);
+    samsaraAutoSyncInterval = null;
+  }
+}
