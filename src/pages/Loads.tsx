@@ -25,11 +25,11 @@ import { CalendarDays, Plus, Search, Filter, Truck, X } from "lucide-react";
 import { LocalLoadDialog } from "@/components/LocalLoadDialog";
 
 const statusColor: Record<LoadStatus, string> = {
-  booked: "bg-blue-100 text-blue-800",
-  dispatched: "bg-amber-100 text-amber-800",
-  in_transit: "bg-violet-100 text-violet-800",
-  delivered: "bg-emerald-100 text-emerald-800",
-  cancelled: "bg-red-100 text-red-800",
+  booked: "bg-blue-100 text-blue-900 border-l-4 border-blue-500",
+  dispatched: "bg-amber-100 text-amber-900 border-l-4 border-amber-500",
+  in_transit: "bg-violet-100 text-violet-900 border-l-4 border-violet-500",
+  delivered: "bg-emerald-100 text-emerald-900 border-l-4 border-emerald-500",
+  cancelled: "bg-red-100 text-red-900 border-l-4 border-red-500",
 };
 
 const statusLabels: LoadStatus[] = ["booked", "dispatched", "in_transit", "delivered", "cancelled"];
@@ -721,7 +721,7 @@ export default function LoadsPage() {
                       <TableCell className="text-sm">{l.pickupLocation || "—"} → {l.deliveryLocation || "—"}</TableCell>
                       <TableCell>
                         {loadCars.length > 0 ? (
-                          <span className="text-sm font-medium">{loadCars.length}</span>
+                          <span className="text-sm font-medium" title={loadCars.map((c) => c.vin).join("\n")}>{loadCars.length}</span>
                         ) : (
                           <div>
                             <span className="text-sm font-medium">{l.vehicleInfo?.match(/\d+/)?.[0] || "—"}</span>

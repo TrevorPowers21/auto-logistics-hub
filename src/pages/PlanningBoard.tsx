@@ -86,8 +86,12 @@ export default function PlanningBoardPage() {
 
   const activeDrivers = useMemo(() => drivers.filter((d) => d.status === "active"), [drivers]);
 
-  const today = new Date();
+  const now = new Date();
+  const today = new Date(now);
   today.setHours(12, 0, 0, 0);
+  if (now.getHours() >= 12) {
+    today.setDate(today.getDate() + 1);
+  }
   const startDate = addDays(today, dayOffset);
   const days = Array.from({ length: 3 }, (_, i) => {
     const d = addDays(startDate, i);
@@ -406,9 +410,12 @@ export default function PlanningBoardPage() {
                 </div>
                 <CardContent className="p-2 space-y-1.5">
                   {day.unassigned.map((slot) => (
-                    <div key={slot.id} className="rounded-lg border border-amber-300 bg-amber-50 p-2.5">
+                    <div key={slot.id} className="rounded-lg border-2 border-amber-300 bg-amber-50 p-2.5">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Badge variant="secondary" className="bg-amber-100 text-amber-800 text-[10px]">Planned</Badge>
+                          </div>
                           <p className="text-sm font-medium">{slot.loadSummary || "No description"}</p>
                           {(slot.pickupLocation || slot.deliveryLocation) && (
                             <p className="text-xs text-muted-foreground mt-0.5">
@@ -502,7 +509,7 @@ export default function PlanningBoardPage() {
                         className={`rounded-lg border-2 p-2.5 cursor-pointer transition-colors ${
                           slot.confirmed
                             ? "border-emerald-500 bg-emerald-50 hover:bg-emerald-100"
-                            : "border-slate-300 bg-white hover:bg-slate-50"
+                            : "border-blue-400 bg-blue-50 hover:bg-blue-100"
                         }`}
                         onClick={() => setEditingSlot(slot)}
                       >
@@ -543,10 +550,10 @@ export default function PlanningBoardPage() {
                           </div>
                           {slot.confirmed ? (
                             <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 text-[10px] shrink-0">
-                              <Check className="h-2.5 w-2.5 mr-0.5" /> Set
+                              <Check className="h-2.5 w-2.5 mr-0.5" /> Finalized
                             </Badge>
                           ) : (
-                            <Badge variant="secondary" className="bg-slate-100 text-slate-600 text-[10px] shrink-0">Planned</Badge>
+                            <Badge variant="secondary" className="bg-blue-100 text-blue-800 text-[10px] shrink-0">Assigned</Badge>
                           )}
                         </div>
                         {slot.notes && !slot.loadId && <p className="text-xs text-muted-foreground mt-1 italic">{slot.notes}</p>}
