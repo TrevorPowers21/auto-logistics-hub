@@ -50,10 +50,10 @@ export default function Dashboard() {
 
       {/* KPI Cards */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-        <KpiCard icon={Truck} label="Active Loads" value={activeLoads} color="text-amber-600" bg="bg-amber-50" />
-        <KpiCard icon={Users} label="Active Drivers" value={activeDrivers} color="text-blue-600" bg="bg-blue-50" />
-        <KpiCard icon={Package} label="Cars In Transit" value={totalCarsInTransit} color="text-violet-600" bg="bg-violet-50" />
-        <KpiCard icon={DollarSign} label="Outstanding" value={`$${outstandingInvoices.toLocaleString()}`} color="text-amber-600" bg="bg-amber-50" />
+        <KpiCard icon={Truck} label="Active Loads" value={activeLoads} accent="amber" />
+        <KpiCard icon={Users} label="Active Drivers" value={activeDrivers} accent="blue" />
+        <KpiCard icon={Package} label="Cars In Transit" value={totalCarsInTransit} accent="violet" />
+        <KpiCard icon={DollarSign} label="Outstanding" value={`$${outstandingInvoices.toLocaleString()}`} accent="amber" />
       </div>
 
       {/* Map + Tracker */}
@@ -273,24 +273,30 @@ function getActiveDriverLoad(loads: ReturnType<typeof getLoads>, driverId?: stri
   return loads.find((load) => load.driverId === driverId && ["booked", "dispatched", "in_transit"].includes(load.status));
 }
 
-function KpiCard({ icon: Icon, label, value, color, bg }: {
+const KPI_ACCENTS: Record<string, string> = {
+  navy: "border-l-primary",
+  red: "border-l-[hsl(351_85%_42%)]",
+  amber: "border-l-amber-500",
+  blue: "border-l-blue-500",
+  violet: "border-l-violet-500",
+  emerald: "border-l-emerald-500",
+};
+
+function KpiCard({ icon: Icon, label, value, accent = "navy" }: {
   icon: React.ElementType;
   label: string;
   value: string | number;
-  color: string;
-  bg: string;
+  accent?: keyof typeof KPI_ACCENTS;
 }) {
   return (
-    <Card className="hover:shadow-sm transition-shadow">
+    <Card className={`border-l-4 ${KPI_ACCENTS[accent]} hover:shadow-sm transition-shadow`}>
       <CardContent className="p-4">
-        <div className="flex items-center gap-3">
-          <div className={`rounded-lg p-2.5 ${bg} ${color}`}>
-            <Icon className="h-4 w-4" />
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{label}</p>
+            <p className="text-[28px] font-bold tabular-nums leading-tight mt-1 text-foreground">{value}</p>
           </div>
-          <div className="min-w-0">
-            <p className="text-2xl font-bold tabular-nums leading-tight">{value}</p>
-            <p className="text-[11px] text-muted-foreground font-medium mt-0.5">{label}</p>
-          </div>
+          <Icon className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
         </div>
       </CardContent>
     </Card>
