@@ -46,7 +46,7 @@ export function samsaraProxyPlugin(): Plugin {
             });
           }
 
-          sendJson(res, 404, { error: "Not found" });
+          await forwardToSamsara(req, res);
         } catch (error) {
           sendJson(res, 500, {
             error: error instanceof Error ? error.message : "Unknown Samsara proxy error",
@@ -56,6 +56,50 @@ export function samsaraProxyPlugin(): Plugin {
       });
     },
   };
+}
+
+const SAMSARA_BASE = "https://api.samsara.com";
+
+async function forwardToSamsara(req: IncomingMessage, res: ServerResponse) {
+  const url = new URL(req.url || "/", "http://localhost");
+  const samsaraPath = url.pathname.replace(/^\/api\/samsara/, "");
+
+  if (!samsaraPath || samsaraPath === "/") {
+    return sendJson(res, 400, { error: "Missing Samsara path" });
+  }
+
+  const auth = req.headers["authorization"];
+  if (!auth || typeof auth !== "string") {
+    return sendJson(res, 401, { error: "Missing Authorization header" });
+  }
+
+  const target = `${SAMSARA_BASE}${samsaraPath}${url.search}`;
+  const headers: Record<string, string> = { authorization: auth };
+  const contentType = req.headers["content-type"];
+  if (typeof contentType === "string") headers["content-type"] = contentType;
+
+  const init: RequestInit = { method: req.method, headers };
+  if (req.method && req.method !== "GET" && req.method !== "HEAD") {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    init.body = Buffer.concat(chunks).toString("utf8");
+  }
+
+  let upstream: Response;
+  try {
+    upstream = await fetch(target, init);
+  } catch (err) {
+    return sendJson(res, 502, {
+      error: err instanceof Error ? err.message : "Upstream fetch failed",
+    });
+  }
+
+  const body = await upstream.text();
+  res.statusCode = upstream.status;
+  res.setHeader("Content-Type", upstream.headers.get("content-type") || "application/json");
+  res.end(body);
 }
 
 async function readJsonBody<T>(req: IncomingMessage): Promise<T> {

@@ -95,7 +95,7 @@ export function isSamsaraConfigured(token?: string | null) {
   return Boolean(token);
 }
 
-const SAMSARA_API_BASE = "https://api.samsara.com";
+const SAMSARA_API_BASE = "/api/samsara";
 
 async function samsaraFetch<T>(path: string, token: string): Promise<T> {
   const res = await fetch(`${SAMSARA_API_BASE}${path}`, {
