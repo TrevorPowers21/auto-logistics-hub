@@ -202,7 +202,10 @@ async function samsaraFetch<T>(path: string, token: string): Promise<T> {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error((err as { message?: string }).message || `Samsara API error: ${res.status}`);
+    const msg = (err as { message?: string }).message;
+    // Include the path that failed so users + console show exactly which endpoint died
+    const pathHint = path.split("?")[0];
+    throw new Error(msg ? `${pathHint}: ${msg}` : `${pathHint} → Samsara API error ${res.status}`);
   }
   return res.json() as Promise<T>;
 }
