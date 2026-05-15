@@ -8,8 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { toast } from "@/components/ui/sonner";
 import { useStoreData } from "@/hooks/use-store";
 import { getDrivers, getVehicles } from "@/lib/store";
-import { fetchSamsaraFaultCodes, fetchSamsaraTrips, fmtDuration, isSamsaraConfigured, getSavedSamsaraToken, SamsaraFaultCode, SamsaraTrip } from "@/lib/samsara";
-import { AlertTriangle, ArrowLeft, Gauge, MapPin, Truck, Wrench, Clock, Activity } from "lucide-react";
+import { fetchSamsaraFaultCodes, fetchSamsaraFuelEnergy, fetchSamsaraTrips, fmtDuration, isSamsaraConfigured, getSavedSamsaraToken, SamsaraFaultCode, SamsaraTrip, SamsaraVehicleFuelEnergy } from "@/lib/samsara";
+import { AlertTriangle, ArrowLeft, Droplet, Gauge, MapPin, Truck, Wrench, Clock, Activity } from "lucide-react";
 
 const statusBadge: Record<string, string> = {
   active: "bg-emerald-100 text-emerald-700",
@@ -25,6 +25,7 @@ export default function VehicleDetail() {
   const [tripsLoading, setTripsLoading] = useState(false);
   const [lookbackDays, setLookbackDays] = useState(7);
   const [faultCodes, setFaultCodes] = useState<SamsaraFaultCode[]>([]);
+  const [fuel, setFuel] = useState<SamsaraVehicleFuelEnergy | null>(null);
 
   const vehicle = useMemo(() => vehicles.find((v) => v.id === id), [vehicles, id]);
   const driver = useMemo(
@@ -74,6 +75,20 @@ export default function VehicleDetail() {
       cancelled = true;
     };
   }, [vehicle?.externalId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadFuel = async () => {
+      if (!vehicle?.externalId) return;
+      const data = await fetchSamsaraFuelEnergy({ lookbackDays: lookbackDays, vehicleIds: [vehicle.externalId] });
+      if (cancelled) return;
+      setFuel(data[0] ?? null);
+    };
+    void loadFuel();
+    return () => {
+      cancelled = true;
+    };
+  }, [vehicle?.externalId, lookbackDays]);
 
   if (!vehicle) {
     return (
@@ -239,6 +254,37 @@ export default function VehicleDetail() {
                 ))}
               </TableBody>
             </Table>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {fuel && (fuel.fuelConsumedGallons != null || fuel.averageMpg != null || fuel.idleTimeMs != null) ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Droplet className="h-4 w-4 text-primary" />
+              Fuel & Idle · last {lookbackDays} days
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4 text-sm">
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Fuel used</div>
+                <div className="text-lg tabular-nums">{fuel.fuelConsumedGallons != null ? `${fuel.fuelConsumedGallons.toFixed(1)} gal` : "—"}</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Avg MPG</div>
+                <div className="text-lg tabular-nums">{fuel.averageMpg != null ? fuel.averageMpg.toFixed(1) : "—"}</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Idle time</div>
+                <div className="text-lg tabular-nums">{fuel.idleTimeMs != null ? fmtDuration(fuel.idleTimeMs) : "—"}</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Engine hours</div>
+                <div className="text-lg tabular-nums">{fuel.engineRunTimeMs != null ? fmtDuration(fuel.engineRunTimeMs) : "—"}</div>
+              </div>
+            </div>
           </CardContent>
         </Card>
       ) : null}

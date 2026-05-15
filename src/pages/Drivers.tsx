@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -288,7 +289,13 @@ export default function DriversPage() {
                     >
                       <TableCell>
                         <div>
-                          <span className="font-medium">{d.name}</span>
+                          <Link
+                            to={`/drivers/${d.id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="font-medium text-primary underline-offset-4 hover:underline"
+                          >
+                            {d.name}
+                          </Link>
                           {d.identifier && <span className="text-xs text-muted-foreground ml-1.5">#{d.identifier}</span>}
                         </div>
                       </TableCell>

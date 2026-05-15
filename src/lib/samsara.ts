@@ -497,6 +497,148 @@ interface SamsaraDvirsResponse {
   pagination?: SamsaraPagination;
 }
 
+// ─── Driver Safety Scores ────────────────────────────────────────────────────
+
+export interface SamsaraDriverSafetyScore {
+  driverId: string;
+  driverName?: string;
+  safetyScore?: number;
+  totalDistanceDrivenMeters?: number;
+  totalTimeDrivenMs?: number;
+  totalHarshAccelEvents?: number;
+  totalHarshBrakingEvents?: number;
+  totalHarshTurningEvents?: number;
+  totalSpeedingEvents?: number;
+}
+
+interface SamsaraDriverSafetyScoreRaw {
+  driver?: { id?: string; name?: string };
+  safetyScore?: number;
+  driverId?: string;
+  driverName?: string;
+  totalDistanceDrivenMeters?: number;
+  totalTimeDrivenMs?: number;
+  totalHarshAccelEvents?: number;
+  totalHarshBrakingEvents?: number;
+  totalHarshTurningEvents?: number;
+  totalSpeedingEvents?: number;
+}
+
+interface SamsaraDriverSafetyResponse {
+  data?: SamsaraDriverSafetyScoreRaw[];
+  pagination?: SamsaraPagination;
+}
+
+/** Pull driver safety scores for a lookback window. */
+export async function fetchSamsaraDriverSafetyScores(opts?: { lookbackDays?: number }): Promise<SamsaraDriverSafetyScore[]> {
+  const token = await getSavedSamsaraToken();
+  if (!token) return [];
+  const days = opts?.lookbackDays ?? 30;
+  const startTime = new Date(Date.now() - days * 86_400_000).toISOString();
+  const endTime = new Date().toISOString();
+  const out: SamsaraDriverSafetyScore[] = [];
+  let cursor: string | undefined;
+  while (true) {
+    const params = new URLSearchParams({ startTime, endTime });
+    if (cursor) params.set("after", cursor);
+    const url = `/fleet/drivers/safety/score?${params.toString()}`;
+    try {
+      const res = await samsaraFetch<SamsaraDriverSafetyResponse>(url, token);
+      for (const raw of res.data ?? []) {
+        const driverId = raw.driver?.id ?? raw.driverId;
+        if (!driverId) continue;
+        out.push({
+          driverId,
+          driverName: raw.driver?.name ?? raw.driverName,
+          safetyScore: raw.safetyScore,
+          totalDistanceDrivenMeters: raw.totalDistanceDrivenMeters,
+          totalTimeDrivenMs: raw.totalTimeDrivenMs,
+          totalHarshAccelEvents: raw.totalHarshAccelEvents,
+          totalHarshBrakingEvents: raw.totalHarshBrakingEvents,
+          totalHarshTurningEvents: raw.totalHarshTurningEvents,
+          totalSpeedingEvents: raw.totalSpeedingEvents,
+        });
+      }
+      if (!res.pagination?.hasNextPage || !res.pagination.endCursor) break;
+      cursor = res.pagination.endCursor;
+    } catch (err) {
+      console.warn("Samsara driver safety scores fetch failed:", err);
+      break;
+    }
+  }
+  return out;
+}
+
+// ─── Fuel / Energy ───────────────────────────────────────────────────────────
+
+export interface SamsaraVehicleFuelEnergy {
+  vehicleId: string;
+  vehicleName?: string;
+  fuelConsumedMl?: number;
+  fuelConsumedGallons?: number;
+  distanceMeters?: number;
+  averageMpg?: number;
+  idleTimeMs?: number;
+  engineRunTimeMs?: number;
+  carbonEmissionsKg?: number;
+}
+
+interface SamsaraFuelEnergyRaw {
+  vehicle?: { id?: string; name?: string };
+  fuelPercentChangeMl?: number;
+  fuelConsumedMl?: number;
+  estFuelEnergyCostUsd?: number;
+  distanceMeters?: number;
+  averageMpg?: number;
+  idleTimeMs?: number;
+  engineRunTimeMs?: number;
+  carbonEmissionsKg?: number;
+}
+
+interface SamsaraFuelEnergyResponse {
+  data?: SamsaraFuelEnergyRaw[];
+  pagination?: SamsaraPagination;
+}
+
+export async function fetchSamsaraFuelEnergy(opts?: { lookbackDays?: number; vehicleIds?: string[] }): Promise<SamsaraVehicleFuelEnergy[]> {
+  const token = await getSavedSamsaraToken();
+  if (!token) return [];
+  const days = opts?.lookbackDays ?? 7;
+  const startTime = new Date(Date.now() - days * 86_400_000).toISOString();
+  const endTime = new Date().toISOString();
+  const out: SamsaraVehicleFuelEnergy[] = [];
+  let cursor: string | undefined;
+  while (true) {
+    const params = new URLSearchParams({ startTime, endTime });
+    if (opts?.vehicleIds && opts.vehicleIds.length > 0) params.set("vehicleIds", opts.vehicleIds.join(","));
+    if (cursor) params.set("after", cursor);
+    const url = `/fleet/vehicles/fuel-energy?${params.toString()}`;
+    try {
+      const res = await samsaraFetch<SamsaraFuelEnergyResponse>(url, token);
+      for (const raw of res.data ?? []) {
+        if (!raw.vehicle?.id) continue;
+        out.push({
+          vehicleId: raw.vehicle.id,
+          vehicleName: raw.vehicle.name,
+          fuelConsumedMl: raw.fuelConsumedMl,
+          fuelConsumedGallons: raw.fuelConsumedMl ? raw.fuelConsumedMl / 3785.411784 : undefined,
+          distanceMeters: raw.distanceMeters,
+          averageMpg: raw.averageMpg,
+          idleTimeMs: raw.idleTimeMs,
+          engineRunTimeMs: raw.engineRunTimeMs,
+          carbonEmissionsKg: raw.carbonEmissionsKg,
+        });
+      }
+      if (!res.pagination?.hasNextPage || !res.pagination.endCursor) break;
+      cursor = res.pagination.endCursor;
+    } catch (err) {
+      console.warn("Samsara fuel-energy fetch failed:", err);
+      break;
+    }
+  }
+  return out;
+}
+
 export async function fetchSamsaraDvirs(opts?: { lookbackDays?: number }): Promise<SamsaraDvir[]> {
   const token = await getSavedSamsaraToken();
   if (!token) return [];
