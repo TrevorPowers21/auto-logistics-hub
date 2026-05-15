@@ -32,6 +32,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const body = await upstream.text();
     res.status(upstream.status);
     res.setHeader("content-type", upstream.headers.get("content-type") || "application/json");
+    if (!upstream.ok) {
+      const preview = body.slice(0, 500);
+      res.send(JSON.stringify({ samsaraStatus: upstream.status, samsaraPath, samsaraBody: preview }));
+      return;
+    }
     res.send(body);
   } catch (err) {
     res.status(502).json({ error: err instanceof Error ? err.message : "Upstream fetch failed" });
