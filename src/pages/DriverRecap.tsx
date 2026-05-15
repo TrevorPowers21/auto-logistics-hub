@@ -544,7 +544,6 @@ export default function DriverRecapPage() {
                   const total = rows.reduce((s, r) => s + (r.totalPay ?? 0), 0);
                   return `$${total.toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
                 })()}
-                accent="text-primary"
               />
             </div>
           )}
