@@ -48,11 +48,13 @@ export default function VehiclesPage() {
 
   const loadTrips = async () => {
     if (!isSamsaraConfigured(apiToken)) return;
+    const externalIds = vehicles.map((v) => v.externalId).filter((id): id is string => Boolean(id));
+    if (externalIds.length === 0) return;
     setTripsLoading(true);
     try {
       const endMs = Date.now();
       const startMs = endMs - 48 * 60 * 60 * 1000;
-      const trips = await fetchSamsaraTrips({ startMs, endMs });
+      const trips = await fetchSamsaraTrips({ startMs, endMs, vehicleIds: externalIds });
       const latest = new Map<string, SamsaraTrip>();
       for (const trip of trips) {
         const vid = trip.vehicle?.id;

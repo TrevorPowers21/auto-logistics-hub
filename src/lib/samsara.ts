@@ -146,35 +146,46 @@ export function fmtDuration(ms?: number): string {
 }
 
 /**
- * Fetch Samsara-detected trips for a given time window, optionally filtered by vehicle.
+ * Samsara's documented trips endpoint is the legacy v1 path and requires a
+ * single vehicleId per call. We fetch each vehicle in parallel and merge.
+ */
+async function fetchTripsForVehicleId(vehicleId: string, startMs: number, endMs: number, token: string): Promise<SamsaraTrip[]> {
+  const params = new URLSearchParams({
+    vehicleId,
+    startMs: String(startMs),
+    endMs: String(endMs),
+  });
+  // Note: /v1/* paths are legacy but still the only documented way to read trips fleet-wide
+  const url = `/v1/fleet/trips?${params.toString()}`;
+  try {
+    const res = await samsaraFetch<SamsaraTripsResponse | { trips?: SamsaraTrip[] }>(url, token);
+    // Legacy v1 sometimes returns { trips: [...] } instead of { data: [...] }
+    const list = (res as SamsaraTripsResponse).data ?? (res as { trips?: SamsaraTrip[] }).trips ?? [];
+    return list;
+  } catch (err) {
+    // Don't let one bad vehicle (deactivated, missing scope on a specific unit) kill the whole fleet load
+    console.warn(`Samsara trips failed for vehicle ${vehicleId}:`, err);
+    return [];
+  }
+}
+
+/**
+ * Fetch Samsara-detected trips for a given time window across a list of vehicles.
  * Samsara returns trips that have COMPLETED — in-progress trips don't appear here.
  */
 export async function fetchSamsaraTrips(opts: {
   startMs: number;
   endMs: number;
-  vehicleIds?: string[];
-  driverIds?: string[];
+  vehicleIds: string[];
 }): Promise<SamsaraTrip[]> {
   const token = await getSavedSamsaraToken();
   if (!token) throw new Error("No Samsara token configured");
+  if (opts.vehicleIds.length === 0) return [];
 
-  const params = new URLSearchParams({
-    startMs: String(opts.startMs),
-    endMs: String(opts.endMs),
-  });
-  if (opts.vehicleIds?.length) params.append("vehicleIds", opts.vehicleIds.join(","));
-  if (opts.driverIds?.length) params.append("driverIds", opts.driverIds.join(","));
-
-  const trips: SamsaraTrip[] = [];
-  let cursor: string | undefined;
-  while (true) {
-    const url = `/fleet/trips?${params.toString()}${cursor ? `&after=${encodeURIComponent(cursor)}` : ""}`;
-    const res = await samsaraFetch<SamsaraTripsResponse>(url, token);
-    trips.push(...res.data);
-    if (!res.pagination?.hasNextPage || !res.pagination.endCursor) break;
-    cursor = res.pagination.endCursor;
-  }
-  return trips;
+  const tripsPerVehicle = await Promise.all(
+    opts.vehicleIds.map((id) => fetchTripsForVehicleId(id, opts.startMs, opts.endMs, token)),
+  );
+  return tripsPerVehicle.flat();
 }
 
 /** Get the most recent completed trip for a single vehicle, looking back N hours (default 48). */
