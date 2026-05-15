@@ -14,6 +14,7 @@ import {
   Building2,
   MapPin,
   ShieldAlert,
+  ClipboardCheck,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -46,6 +47,7 @@ const navGroups = [
       { title: "Cars", url: "/cars", icon: Car },
       { title: "Fleet", url: "/vehicles", icon: CarFront },
       { title: "Safety", url: "/safety", icon: ShieldAlert },
+      { title: "Inspections", url: "/inspections", icon: ClipboardCheck },
     ],
   },
   {

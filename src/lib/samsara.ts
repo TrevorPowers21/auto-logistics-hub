@@ -368,6 +368,184 @@ interface SamsaraAddressesResponse {
   pagination?: SamsaraPagination;
 }
 
+// ─── Maintenance / Fault Codes ───────────────────────────────────────────────
+
+export interface SamsaraFaultCode {
+  vehicleId: string;
+  vehicleName?: string;
+  description?: string;
+  code?: string;
+  source?: string;
+  txId?: string;
+  setTime?: string;
+}
+
+interface SamsaraMaintenanceRaw {
+  id?: string;
+  name?: string;
+  externalIds?: SamsaraExternalIds;
+  j1939?: {
+    diagnosticTroubleCodes?: Array<{
+      spnId?: number;
+      fmiId?: number;
+      occurrenceCount?: number;
+      txId?: number;
+      spnDescription?: string;
+      fmiDescription?: string;
+      isVerified?: boolean;
+    }>;
+    checkEngineLights?: Record<string, unknown>;
+  };
+  obdii?: {
+    diagnosticTroubleCodes?: Array<{ code?: string; description?: string }>;
+  };
+  passenger?: {
+    diagnosticTroubleCodes?: Array<{ id?: string; description?: string }>;
+  };
+}
+
+interface SamsaraMaintenanceResponse {
+  data?: SamsaraMaintenanceRaw[];
+  pagination?: SamsaraPagination;
+}
+
+export async function fetchSamsaraFaultCodes(): Promise<SamsaraFaultCode[]> {
+  const token = await getSavedSamsaraToken();
+  if (!token) return [];
+  const out: SamsaraFaultCode[] = [];
+  let cursor: string | undefined;
+  while (true) {
+    const url = `/fleet/maintenance/list${cursor ? `?after=${encodeURIComponent(cursor)}` : ""}`;
+    try {
+      const res = await samsaraFetch<SamsaraMaintenanceResponse>(url, token);
+      for (const v of res.data ?? []) {
+        const vehicleId = v.id ?? "";
+        const vehicleName = v.name;
+        for (const dtc of v.j1939?.diagnosticTroubleCodes ?? []) {
+          out.push({
+            vehicleId,
+            vehicleName,
+            code: dtc.spnId ? `SPN ${dtc.spnId} / FMI ${dtc.fmiId}` : undefined,
+            description: dtc.spnDescription || dtc.fmiDescription,
+            source: "J1939",
+            txId: dtc.txId ? String(dtc.txId) : undefined,
+          });
+        }
+        for (const dtc of v.obdii?.diagnosticTroubleCodes ?? []) {
+          out.push({
+            vehicleId,
+            vehicleName,
+            code: dtc.code,
+            description: dtc.description,
+            source: "OBD-II",
+          });
+        }
+        for (const dtc of v.passenger?.diagnosticTroubleCodes ?? []) {
+          out.push({
+            vehicleId,
+            vehicleName,
+            code: dtc.id,
+            description: dtc.description,
+            source: "Passenger",
+          });
+        }
+      }
+      if (!res.pagination?.hasNextPage || !res.pagination.endCursor) break;
+      cursor = res.pagination.endCursor;
+    } catch (err) {
+      console.warn("Samsara maintenance fetch failed:", err);
+      break;
+    }
+  }
+  return out;
+}
+
+// ─── DVIRs (Driver Vehicle Inspection Reports) ───────────────────────────────
+
+export interface SamsaraDvir {
+  id: string;
+  inspectionType?: string;
+  timeMs: number;
+  time: string;
+  vehicleId?: string;
+  vehicleName?: string;
+  driverId?: string;
+  driverName?: string;
+  safe?: boolean;
+  defects: Array<{ id: string; description?: string; resolved?: boolean }>;
+  odometerMeters?: number;
+  signature?: string;
+}
+
+interface SamsaraDvirRaw {
+  id?: string;
+  inspectionType?: string;
+  startTime?: string;
+  endTime?: string;
+  createdAtTime?: string;
+  vehicle?: { id?: string; name?: string };
+  driver?: { id?: string; name?: string };
+  safe?: boolean;
+  defects?: Array<{ id?: string; description?: string; resolved?: boolean }>;
+  trailerDefects?: Array<{ id?: string; description?: string; resolved?: boolean }>;
+  odometerMiles?: number;
+  authorSignature?: { signedAtTime?: string; line1?: string };
+}
+
+interface SamsaraDvirsResponse {
+  data?: SamsaraDvirRaw[];
+  pagination?: SamsaraPagination;
+}
+
+export async function fetchSamsaraDvirs(opts?: { lookbackDays?: number }): Promise<SamsaraDvir[]> {
+  const token = await getSavedSamsaraToken();
+  if (!token) return [];
+  const days = opts?.lookbackDays ?? 14;
+  const startTime = new Date(Date.now() - days * 86_400_000).toISOString();
+  const out: SamsaraDvir[] = [];
+  let cursor: string | undefined;
+  while (true) {
+    const params = new URLSearchParams({ startTime });
+    if (cursor) params.set("after", cursor);
+    const url = `/fleet/dvirs?${params.toString()}`;
+    try {
+      const res = await samsaraFetch<SamsaraDvirsResponse>(url, token);
+      for (const raw of res.data ?? []) {
+        const time = raw.endTime ?? raw.startTime ?? raw.createdAtTime ?? "";
+        const timeMs = time ? Date.parse(time) : 0;
+        const defects = [
+          ...(raw.defects ?? []),
+          ...(raw.trailerDefects ?? []),
+        ].map((d, i) => ({
+          id: d.id ?? `${raw.id}-d-${i}`,
+          description: d.description,
+          resolved: d.resolved,
+        }));
+        out.push({
+          id: raw.id ?? `${timeMs}-${out.length}`,
+          inspectionType: raw.inspectionType,
+          time,
+          timeMs,
+          vehicleId: raw.vehicle?.id,
+          vehicleName: raw.vehicle?.name,
+          driverId: raw.driver?.id,
+          driverName: raw.driver?.name,
+          safe: raw.safe,
+          defects,
+          odometerMeters: raw.odometerMiles ? raw.odometerMiles * METERS_PER_MILE : undefined,
+          signature: raw.authorSignature?.line1,
+        });
+      }
+      if (!res.pagination?.hasNextPage || !res.pagination.endCursor) break;
+      cursor = res.pagination.endCursor;
+    } catch (err) {
+      console.warn("Samsara DVIRs fetch failed:", err);
+      break;
+    }
+  }
+  return out.sort((a, b) => b.timeMs - a.timeMs);
+}
+
 export interface SamsaraSafetyEvent {
   id: string;
   time: string;

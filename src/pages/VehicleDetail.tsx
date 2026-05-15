@@ -8,8 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { toast } from "@/components/ui/sonner";
 import { useStoreData } from "@/hooks/use-store";
 import { getDrivers, getVehicles } from "@/lib/store";
-import { fetchSamsaraTrips, fmtDuration, isSamsaraConfigured, getSavedSamsaraToken, SamsaraTrip } from "@/lib/samsara";
-import { ArrowLeft, Gauge, MapPin, Truck, Wrench, Clock, Activity } from "lucide-react";
+import { fetchSamsaraFaultCodes, fetchSamsaraTrips, fmtDuration, isSamsaraConfigured, getSavedSamsaraToken, SamsaraFaultCode, SamsaraTrip } from "@/lib/samsara";
+import { AlertTriangle, ArrowLeft, Gauge, MapPin, Truck, Wrench, Clock, Activity } from "lucide-react";
 
 const statusBadge: Record<string, string> = {
   active: "bg-emerald-100 text-emerald-700",
@@ -24,6 +24,7 @@ export default function VehicleDetail() {
   const [trips, setTrips] = useState<SamsaraTrip[]>([]);
   const [tripsLoading, setTripsLoading] = useState(false);
   const [lookbackDays, setLookbackDays] = useState(7);
+  const [faultCodes, setFaultCodes] = useState<SamsaraFaultCode[]>([]);
 
   const vehicle = useMemo(() => vehicles.find((v) => v.id === id), [vehicles, id]);
   const driver = useMemo(
@@ -59,6 +60,20 @@ export default function VehicleDetail() {
       cancelled = true;
     };
   }, [vehicle?.externalId, lookbackDays]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadFaults = async () => {
+      if (!vehicle?.externalId) return;
+      const all = await fetchSamsaraFaultCodes();
+      if (cancelled) return;
+      setFaultCodes(all.filter((f) => f.vehicleId === vehicle.externalId));
+    };
+    void loadFaults();
+    return () => {
+      cancelled = true;
+    };
+  }, [vehicle?.externalId]);
 
   if (!vehicle) {
     return (
@@ -191,6 +206,39 @@ export default function VehicleDetail() {
                 </CircleMarker>
               </MapContainer>
             </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {faultCodes.length > 0 ? (
+        <Card className="border-l-4 border-l-red-500">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <AlertTriangle className="h-4 w-4 text-red-500" />
+              Active Fault Codes ({faultCodes.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Source</TableHead>
+                  <TableHead>Code</TableHead>
+                  <TableHead>Description</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {faultCodes.map((f, i) => (
+                  <TableRow key={`${f.code}-${i}`}>
+                    <TableCell className="text-xs">
+                      <Badge variant="secondary" className="text-[10px]">{f.source || "—"}</Badge>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{f.code || "—"}</TableCell>
+                    <TableCell className="text-xs">{f.description || "—"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
       ) : null}
