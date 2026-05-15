@@ -311,6 +311,79 @@ async function samsaraFetch<T>(path: string, token: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export interface SamsaraHosClocks {
+  driverId: string;
+  driverName?: string;
+  driveRemainingMs?: number;
+  shiftRemainingMs?: number;
+  cycleRemainingMs?: number;
+  breakRemainingMs?: number;
+  dutyStatus?: string;
+  vehicleId?: string;
+}
+
+interface SamsaraDurationRaw {
+  value?: number;
+  unit?: string;
+}
+
+interface SamsaraHosClockRaw {
+  driver?: { id?: string; name?: string };
+  drive?: { remaining?: SamsaraDurationRaw };
+  shift?: { remaining?: SamsaraDurationRaw };
+  cycle?: { remaining?: SamsaraDurationRaw };
+  break?: { remaining?: SamsaraDurationRaw };
+  currentDutyStatus?: string;
+  currentVehicle?: { id?: string };
+}
+
+interface SamsaraHosClocksResponse {
+  data?: SamsaraHosClockRaw[];
+  pagination?: SamsaraPagination;
+}
+
+function durationToMs(d?: SamsaraDurationRaw): number | undefined {
+  if (!d || d.value == null) return undefined;
+  const unit = (d.unit || "milliseconds").toLowerCase();
+  if (unit === "milliseconds") return d.value;
+  if (unit === "seconds") return d.value * 1000;
+  if (unit === "minutes") return d.value * 60_000;
+  if (unit === "hours") return d.value * 3_600_000;
+  return d.value;
+}
+
+export async function fetchSamsaraHosClocks(): Promise<SamsaraHosClocks[]> {
+  const token = await getSavedSamsaraToken();
+  if (!token) return [];
+  const out: SamsaraHosClocks[] = [];
+  let cursor: string | undefined;
+  while (true) {
+    const url = `/fleet/hos/clocks${cursor ? `?after=${encodeURIComponent(cursor)}` : ""}`;
+    try {
+      const res = await samsaraFetch<SamsaraHosClocksResponse>(url, token);
+      for (const raw of res.data ?? []) {
+        if (!raw.driver?.id) continue;
+        out.push({
+          driverId: raw.driver.id,
+          driverName: raw.driver.name,
+          driveRemainingMs: durationToMs(raw.drive?.remaining),
+          shiftRemainingMs: durationToMs(raw.shift?.remaining),
+          cycleRemainingMs: durationToMs(raw.cycle?.remaining),
+          breakRemainingMs: durationToMs(raw.break?.remaining),
+          dutyStatus: raw.currentDutyStatus,
+          vehicleId: raw.currentVehicle?.id,
+        });
+      }
+      if (!res.pagination?.hasNextPage || !res.pagination.endCursor) break;
+      cursor = res.pagination.endCursor;
+    } catch (err) {
+      console.warn("Samsara HOS clocks fetch failed:", err);
+      break;
+    }
+  }
+  return out;
+}
+
 export async function syncSamsaraFleetData(
   currentVehicles: Vehicle[],
   currentDrivers: Driver[],

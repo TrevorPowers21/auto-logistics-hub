@@ -19,9 +19,10 @@ import { syncLoadsToPlanning } from "@/pages/Loads";
 import { normalizeBoardStops } from "@/lib/driver-recap";
 import { Address, Car, Driver, Load, LocationProfile, PlanningSlot } from "@/lib/types";
 import { decodeVin } from "@/lib/vin";
+import { fetchSamsaraHosClocks, SamsaraHosClocks } from "@/lib/samsara";
 import {
   AlertCircle, Ban, CalendarDays, Check, ChevronLeft, ChevronRight, Copy,
-  Download, Plus, Trash2, UserPlus, X, Rocket,
+  Download, Plus, Trash2, UserPlus, X, Rocket, Timer,
 } from "lucide-react";
 import { addDays, format, subDays } from "date-fns";
 
@@ -48,6 +49,24 @@ export default function PlanningBoardPage() {
   const [assigningSlot, setAssigningSlot] = useState<PlanningSlot | null>(null);
   const [finalizeDate, setFinalizeDate] = useState<string | null>(null);
   const [finalizeSlot, setFinalizeSlot] = useState<PlanningSlot | null>(null);
+  const [hosByDriver, setHosByDriver] = useState<Map<string, SamsaraHosClocks>>(new Map());
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const clocks = await fetchSamsaraHosClocks();
+      if (cancelled) return;
+      const map = new Map<string, SamsaraHosClocks>();
+      for (const c of clocks) map.set(c.driverId, c);
+      setHosByDriver(map);
+    };
+    void load();
+    const interval = setInterval(() => void load(), 15 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   const customerOptions = useMemo(
     () => locations.slice().sort((a, b) => a.name.localeCompare(b.name)),
@@ -450,7 +469,7 @@ export default function PlanningBoardPage() {
               return (
                 <Card key={row.driver.id} className={`overflow-hidden ${isOff ? "border-gray-400 bg-gray-50" : row.slots.length === 0 ? "border-gray-300 bg-white" : "border-primary/20 bg-card shadow-sm"}`}>
                   <div className="flex items-center justify-between px-3 py-2 bg-muted/60 border-b">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
                       <span className={`text-sm font-medium ${isOff ? "text-gray-500" : ""}`}>{row.driver.name}</span>
                       {isOff ? (
                         <Badge variant="secondary" className="bg-gray-300 text-gray-700 text-[10px]"><Ban className="h-2.5 w-2.5 mr-0.5" /> Off</Badge>
@@ -459,6 +478,7 @@ export default function PlanningBoardPage() {
                       ) : (
                         <Badge variant="secondary" className="text-[10px]">{driverCarTotal} cars</Badge>
                       )}
+                      <HosBadge clocks={row.driver.externalId ? hosByDriver.get(row.driver.externalId) : undefined} />
                     </div>
                     <div className="flex gap-0.5">
                       {!isOff && (
@@ -1339,6 +1359,26 @@ function FinalizeVinDialog({
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function HosBadge({ clocks }: { clocks?: SamsaraHosClocks }) {
+  if (!clocks || clocks.driveRemainingMs == null) return null;
+  const hours = clocks.driveRemainingMs / 3_600_000;
+  const label = hours >= 1 ? `${hours.toFixed(1)}h` : `${Math.round(hours * 60)}m`;
+  const tone =
+    hours >= 6 ? "bg-emerald-100 text-emerald-700"
+    : hours >= 2 ? "bg-amber-100 text-amber-800"
+    : "bg-red-100 text-red-700";
+  return (
+    <Badge
+      variant="secondary"
+      className={`${tone} text-[10px] flex items-center gap-0.5`}
+      title={`Drive ${label} · Shift ${(clocks.shiftRemainingMs ?? 0) / 3_600_000 >= 1 ? ((clocks.shiftRemainingMs ?? 0) / 3_600_000).toFixed(1) + "h" : "—"} · Cycle ${(clocks.cycleRemainingMs ?? 0) / 3_600_000 >= 1 ? ((clocks.cycleRemainingMs ?? 0) / 3_600_000).toFixed(1) + "h" : "—"}`}
+    >
+      <Timer className="h-2.5 w-2.5" />
+      {label}
+    </Badge>
+  );
+}
 
 function downloadText(text: string, filename: string) {
   const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
