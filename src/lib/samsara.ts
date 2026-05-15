@@ -146,32 +146,39 @@ export function fmtDuration(ms?: number): string {
 }
 
 /**
- * Samsara's documented trips endpoint is the legacy v1 path and requires a
- * single vehicleId per call. We fetch each vehicle in parallel and merge.
+ * Modern Samsara trips endpoint: /trips/stream
+ * - Batched (up to 50 vehicle IDs per call)
+ * - RFC 3339 startTime (no endTime — stream returns up to now)
+ * - Requires "Read Trips" scope under the Trips category
+ *
+ * Replaces the deprecated /v1/fleet/trips path.
  */
-async function fetchTripsForVehicleId(vehicleId: string, startMs: number, endMs: number, token: string): Promise<SamsaraTrip[]> {
+async function fetchTripsStreamBatch(ids: string[], startTime: string, token: string): Promise<SamsaraTrip[]> {
   const params = new URLSearchParams({
-    vehicleId,
-    startMs: String(startMs),
-    endMs: String(endMs),
+    startTime,
+    ids: ids.join(","),
   });
-  // Note: /v1/* paths are legacy but still the only documented way to read trips fleet-wide
-  const url = `/v1/fleet/trips?${params.toString()}`;
-  try {
-    const res = await samsaraFetch<SamsaraTripsResponse | { trips?: SamsaraTrip[] }>(url, token);
-    // Legacy v1 sometimes returns { trips: [...] } instead of { data: [...] }
-    const list = (res as SamsaraTripsResponse).data ?? (res as { trips?: SamsaraTrip[] }).trips ?? [];
-    return list;
-  } catch (err) {
-    // Don't let one bad vehicle (deactivated, missing scope on a specific unit) kill the whole fleet load
-    console.warn(`Samsara trips failed for vehicle ${vehicleId}:`, err);
-    return [];
+  const trips: SamsaraTrip[] = [];
+  let cursor: string | undefined;
+  while (true) {
+    const url = `/trips/stream?${params.toString()}${cursor ? `&after=${encodeURIComponent(cursor)}` : ""}`;
+    try {
+      const res = await samsaraFetch<SamsaraTripsResponse>(url, token);
+      trips.push(...(res.data ?? []));
+      if (!res.pagination?.hasNextPage || !res.pagination.endCursor) break;
+      cursor = res.pagination.endCursor;
+    } catch (err) {
+      console.warn(`Samsara trips stream batch failed:`, err);
+      break;
+    }
   }
+  return trips;
 }
 
 /**
  * Fetch Samsara-detected trips for a given time window across a list of vehicles.
  * Samsara returns trips that have COMPLETED — in-progress trips don't appear here.
+ * Batches calls so we never exceed Samsara's 50-id-per-request limit.
  */
 export async function fetchSamsaraTrips(opts: {
   startMs: number;
@@ -182,10 +189,17 @@ export async function fetchSamsaraTrips(opts: {
   if (!token) throw new Error("No Samsara token configured");
   if (opts.vehicleIds.length === 0) return [];
 
-  const tripsPerVehicle = await Promise.all(
-    opts.vehicleIds.map((id) => fetchTripsForVehicleId(id, opts.startMs, opts.endMs, token)),
-  );
-  return tripsPerVehicle.flat();
+  const startTime = new Date(opts.startMs).toISOString();
+  const batches: string[][] = [];
+  for (let i = 0; i < opts.vehicleIds.length; i += 50) {
+    batches.push(opts.vehicleIds.slice(i, i + 50));
+  }
+  const tripsPerBatch = await Promise.all(batches.map((batch) => fetchTripsStreamBatch(batch, startTime, token)));
+  // Stream endpoint has no endMs — filter client-side to the requested window
+  return tripsPerBatch.flat().filter((trip) => {
+    const tripEnd = trip.endMs ?? (trip.endTime ? Date.parse(trip.endTime) : 0);
+    return tripEnd <= opts.endMs;
+  });
 }
 
 /** Get the most recent completed trip for a single vehicle, looking back N hours (default 48). */
