@@ -1,5 +1,6 @@
 {
   "rewrites": [
+    { "source": "/api/samsara/:path*", "destination": "/api/samsara/[...path]" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "functions": {
