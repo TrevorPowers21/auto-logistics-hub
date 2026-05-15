@@ -15,6 +15,7 @@ import InvoicesPage from "./pages/Invoices.tsx";
 import AddressesPage from "./pages/Addresses.tsx";
 import VehiclesPage from "./pages/Vehicles.tsx";
 import VehicleDetail from "./pages/VehicleDetail.tsx";
+import GeofencesPage from "./pages/Geofences.tsx";
 import PlanningBoardPage from "./pages/PlanningBoard.tsx";
 import FuelTrackingPage from "./pages/FuelTracking.tsx";
 import SettingsPage from "./pages/Settings.tsx";
@@ -40,6 +41,7 @@ const App = () => (
           <Route path="/invoices" element={<AppLayout><InvoicesPage /></AppLayout>} />
           <Route path="/vehicles" element={<AppLayout><VehiclesPage /></AppLayout>} />
           <Route path="/vehicles/:id" element={<AppLayout><VehicleDetail /></AppLayout>} />
+          <Route path="/geofences" element={<AppLayout><GeofencesPage /></AppLayout>} />
           <Route path="/planning" element={<AppLayout><PlanningBoardPage /></AppLayout>} />
           <Route path="/fuel" element={<AppLayout><FuelTrackingPage /></AppLayout>} />
           <Route path="/settings" element={<AppLayout><SettingsPage /></AppLayout>} />

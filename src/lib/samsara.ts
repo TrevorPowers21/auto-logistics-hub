@@ -352,6 +352,42 @@ function durationToMs(d?: SamsaraDurationRaw): number | undefined {
   return d.value;
 }
 
+export interface SamsaraAddress {
+  id: string;
+  name: string;
+  formattedAddress?: string;
+  notes?: string;
+  latitude?: number;
+  longitude?: number;
+  geofence?: { circle?: { latitude: number; longitude: number; radiusMeters: number }; polygon?: { vertices: { latitude: number; longitude: number }[] } };
+  tags?: { id: string; name: string }[];
+}
+
+interface SamsaraAddressesResponse {
+  data?: SamsaraAddress[];
+  pagination?: SamsaraPagination;
+}
+
+export async function fetchSamsaraAddresses(): Promise<SamsaraAddress[]> {
+  const token = await getSavedSamsaraToken();
+  if (!token) return [];
+  const out: SamsaraAddress[] = [];
+  let cursor: string | undefined;
+  while (true) {
+    const url = `/addresses${cursor ? `?after=${encodeURIComponent(cursor)}` : ""}`;
+    try {
+      const res = await samsaraFetch<SamsaraAddressesResponse>(url, token);
+      out.push(...(res.data ?? []));
+      if (!res.pagination?.hasNextPage || !res.pagination.endCursor) break;
+      cursor = res.pagination.endCursor;
+    } catch (err) {
+      console.warn("Samsara addresses fetch failed:", err);
+      break;
+    }
+  }
+  return out;
+}
+
 export async function fetchSamsaraHosClocks(): Promise<SamsaraHosClocks[]> {
   const token = await getSavedSamsaraToken();
   if (!token) return [];

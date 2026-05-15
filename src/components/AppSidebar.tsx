@@ -12,6 +12,7 @@ import {
   Fuel,
   Receipt,
   Building2,
+  MapPin,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -51,6 +52,7 @@ const navGroups = [
       { title: "Drivers", url: "/drivers", icon: Users },
       { title: "Customers", url: "/locations", icon: Building2 },
       { title: "Addresses", url: "/addresses", icon: MapPinned },
+      { title: "Geofences", url: "/geofences", icon: MapPin },
     ],
   },
   {
