@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getDrivers, getLoads, getExpenses, getInvoices, getVehicles } from "@/lib/store";
 import { useStoreData } from "@/hooks/use-store";
-import { Truck, Users, DollarSign, FileText, Gauge, MapPinned, Package, TrendingUp } from "lucide-react";
+import { Truck, Users, DollarSign, FileText, Gauge, MapPinned, Package, TrendingUp, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { CircleMarker, MapContainer, Popup, TileLayer } from "react-leaflet";
@@ -35,6 +35,25 @@ export default function Dashboard() {
   ];
 
   const recentLoads = [...loads].sort((a, b) => b.pickupDate.localeCompare(a.pickupDate)).slice(0, 6);
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const alerts = loads
+    .filter((l) => l.status !== "cancelled" && l.status !== "delivered")
+    .map((l) => {
+      const missingVins = !l.carIds || l.carIds.length === 0;
+      const missingPrice = !l.price || l.price === 0;
+      const overdue = !!l.deliveryDate && new Date(`${l.deliveryDate}T12:00:00`) < todayStart;
+      const issues: string[] = [];
+      if (overdue) issues.push("Past delivery date");
+      if (missingVins) issues.push("VINs pending");
+      if (missingPrice) issues.push("Price missing");
+      if (issues.length === 0) return null;
+      return { load: l, issue: issues.join(" • "), severity: overdue ? "high" : ("medium" as "high" | "medium") };
+    })
+    .filter((a): a is NonNullable<typeof a> => a !== null)
+    .sort((a, b) => (a.severity === "high" ? 0 : 1) - (b.severity === "high" ? 0 : 1))
+    .slice(0, 8);
   const trackedVehicles = vehicles.filter((vehicle) =>
     typeof vehicle.lastKnownLatitude === "number" && typeof vehicle.lastKnownLongitude === "number",
   );
@@ -56,8 +75,8 @@ export default function Dashboard() {
         <KpiCard icon={DollarSign} label="Outstanding" value={`$${outstandingInvoices.toLocaleString()}`} accent="amber" />
       </div>
 
-      {/* Map + Tracker */}
-      <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,1.85fr)_minmax(320px,1fr)]">
+      {/* Map + Tracker — map is the hero */}
+      <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(280px,1fr)]">
         <Card className="flex h-full flex-col overflow-hidden">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between gap-4">
@@ -158,32 +177,36 @@ export default function Dashboard() {
 
         <Card className="lg:col-span-3">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Recent Loads</CardTitle>
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              Operational Alerts
+              {alerts.length > 0 && (
+                <Badge variant="secondary" className="text-[10px] bg-amber-100 text-amber-900 ml-1">{alerts.length}</Badge>
+              )}
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            {recentLoads.length === 0 ? (
+            {alerts.length === 0 ? (
               <div className="flex items-center justify-center py-12 text-sm text-muted-foreground">
                 <div className="text-center space-y-2">
-                  <Truck className="h-8 w-8 mx-auto text-muted-foreground/30" />
-                  <p>No loads created yet</p>
+                  <CheckCircle2 className="h-8 w-8 mx-auto text-emerald-500/40" />
+                  <p>All active loads are in order</p>
                 </div>
               </div>
             ) : (
               <div className="space-y-0.5">
-                {recentLoads.map((load) => (
-                  <div key={load.id} className="flex items-center justify-between py-2.5 border-b last:border-0 hover:bg-muted/30 -mx-2 px-2 rounded transition-colors">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{load.referenceNumber}</p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {load.pickupLocation || "—"} → {load.deliveryLocation || "—"}
+                {alerts.map((alert) => (
+                  <div key={alert.load.id} className="flex items-center justify-between py-2.5 border-b last:border-0 hover:bg-muted/30 -mx-2 px-2 rounded transition-colors">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium truncate">
+                        {alert.load.referenceNumber}
+                        <span className="text-muted-foreground font-normal ml-2">{alert.load.customer}</span>
                       </p>
+                      <p className="text-xs text-muted-foreground truncate">{alert.issue}</p>
                     </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      {load.price > 0 && <span className="text-sm font-medium tabular-nums">${load.price.toLocaleString()}</span>}
-                      <Badge variant="secondary" className={`text-[10px] ${statusColor[load.status] || ""}`}>
-                        {load.status.replace("_", " ")}
-                      </Badge>
-                    </div>
+                    <Badge variant="secondary" className={`text-[10px] shrink-0 border-l-2 ${alert.severity === "high" ? "bg-red-100 text-red-900 border-red-500" : "bg-amber-100 text-amber-900 border-amber-500"}`}>
+                      {alert.severity === "high" ? "Overdue" : "Incomplete"}
+                    </Badge>
                   </div>
                 ))}
               </div>
