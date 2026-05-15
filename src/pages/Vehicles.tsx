@@ -380,9 +380,13 @@ function FleetUnitRow({
         tabIndex={0}
       >
         <TableCell className="font-medium">
-          <span className="underline-offset-4 group-hover:underline">
+          <Link
+            to={`/vehicles/${vehicle.id}`}
+            onClick={(e) => e.stopPropagation()}
+            className="text-primary underline-offset-4 hover:underline"
+          >
             {vehicle.year} {vehicle.make} {vehicle.model}
-          </span>
+          </Link>
         </TableCell>
         <TableCell className="font-mono text-sm">{vehicle.vin}</TableCell>
         <TableCell className="text-sm">{vehicle.licensePlate}</TableCell>
