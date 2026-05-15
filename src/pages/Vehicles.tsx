@@ -392,11 +392,14 @@ function FleetUnitRow({
             <div className="flex flex-col gap-0.5">
               <div className="flex items-center gap-1.5 font-medium text-foreground tabular-nums">
                 <Route className="h-3 w-3 text-muted-foreground" />
-                {fmtMiles(lastTrip.distanceMeters)} · {fmtDuration(lastTrip.durationMs)}
-              </div>
-              <span className="text-muted-foreground truncate max-w-[160px]" title={lastTrip.endLocation}>
                 {lastTrip.endTime ? new Date(lastTrip.endTime).toLocaleString(undefined, { hour: "numeric", minute: "2-digit", month: "numeric", day: "numeric" }) : "—"}
-              </span>
+                {lastTrip.durationMs ? ` · ${fmtDuration(lastTrip.durationMs)}` : ""}
+              </div>
+              {lastTrip.endLocation ? (
+                <span className="text-muted-foreground truncate max-w-[200px]" title={lastTrip.endLocation}>
+                  {lastTrip.endLocation}
+                </span>
+              ) : null}
             </div>
           ) : (
             <span className="text-muted-foreground">—</span>
