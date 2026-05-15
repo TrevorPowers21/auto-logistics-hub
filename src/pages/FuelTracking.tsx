@@ -109,25 +109,25 @@ export default function FuelTrackingPage() {
 
       {/* Stats cards */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
+        <Card className="border-l-4 border-l-primary">
           <CardContent className="p-5">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">This Week</p>
-            <p className="mt-2 text-2xl font-bold tabular-nums">{stats.weekGallons.toLocaleString()} gal</p>
-            <p className="text-sm text-muted-foreground">${stats.weekCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">This Week</p>
+            <p className="mt-1 text-[28px] font-bold tabular-nums leading-tight">{stats.weekGallons.toLocaleString()} gal</p>
+            <p className="text-sm text-muted-foreground mt-1">${stats.weekCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-4 border-l-blue-500">
           <CardContent className="p-5">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">This Month</p>
-            <p className="mt-2 text-2xl font-bold tabular-nums">{stats.monthGallons.toLocaleString()} gal</p>
-            <p className="text-sm text-muted-foreground">${stats.monthCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">This Month</p>
+            <p className="mt-1 text-[28px] font-bold tabular-nums leading-tight">{stats.monthGallons.toLocaleString()} gal</p>
+            <p className="text-sm text-muted-foreground mt-1">${stats.monthCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-l-4 border-l-violet-500">
           <CardContent className="p-5">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">All Time</p>
-            <p className="mt-2 text-2xl font-bold tabular-nums">{stats.totalGallons.toLocaleString()} gal</p>
-            <p className="text-sm text-muted-foreground">${stats.totalCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">All Time</p>
+            <p className="mt-1 text-[28px] font-bold tabular-nums leading-tight">{stats.totalGallons.toLocaleString()} gal</p>
+            <p className="text-sm text-muted-foreground mt-1">${stats.totalCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
           </CardContent>
         </Card>
       </div>
