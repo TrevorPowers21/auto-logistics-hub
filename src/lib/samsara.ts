@@ -247,15 +247,32 @@ export async function syncSamsaraFleetData(
   const token = await getSavedSamsaraToken();
   if (!token) throw new Error("No Samsara token configured");
 
-  // Fetch vehicle directory, stats feed, and drivers in parallel
   const statTypes = DEFAULT_STAT_TYPES.join(",");
-  const cursorParam = after ? `&after=${after}` : "";
+  const feedUrl = (cursor?: string) =>
+    `/fleet/vehicles/stats/feed?types=${statTypes}${cursor ? `&after=${cursor}` : ""}`;
 
-  const [directory, feed, driversRes] = await Promise.all([
-    samsaraFetch<SamsaraVehicleDirectoryResponse>("/fleet/vehicles", token),
-    samsaraFetch<SamsaraVehicleStatsFeedResponse>(`/fleet/vehicles/stats/feed?types=${statTypes}${cursorParam}`, token),
-    samsaraFetch<SamsaraDriversResponse>("/fleet/drivers", token),
-  ]);
+  const runFetch = (cursor?: string) =>
+    Promise.all([
+      samsaraFetch<SamsaraVehicleDirectoryResponse>("/fleet/vehicles", token),
+      samsaraFetch<SamsaraVehicleStatsFeedResponse>(feedUrl(cursor), token),
+      samsaraFetch<SamsaraDriversResponse>("/fleet/drivers", token),
+    ]);
+
+  let directory: SamsaraVehicleDirectoryResponse;
+  let feed: SamsaraVehicleStatsFeedResponse;
+  let driversRes: SamsaraDriversResponse;
+  try {
+    [directory, feed, driversRes] = await runFetch(after);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "";
+    if (after && /Parameters differ from previous paginated request/i.test(msg)) {
+      // Samsara rejects stale cursors. Drop it and retry without.
+      saveAppSetting("samsara_cursor", "");
+      [directory, feed, driversRes] = await runFetch(undefined);
+    } else {
+      throw err;
+    }
+  }
 
   const mergedVehicles = await mergeSamsaraVehicles(currentVehicles, directory.data, feed);
   const mergedDrivers = mergeSamsaraDrivers(currentDrivers, driversRes.data);
