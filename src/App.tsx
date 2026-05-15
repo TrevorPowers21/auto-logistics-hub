@@ -19,6 +19,7 @@ import GeofencesPage from "./pages/Geofences.tsx";
 import SafetyPage from "./pages/Safety.tsx";
 import InspectionsPage from "./pages/Inspections.tsx";
 import DriverDetail from "./pages/DriverDetail.tsx";
+import DashcamPage from "./pages/Dashcam.tsx";
 import PlanningBoardPage from "./pages/PlanningBoard.tsx";
 import FuelTrackingPage from "./pages/FuelTracking.tsx";
 import SettingsPage from "./pages/Settings.tsx";
@@ -48,6 +49,7 @@ const App = () => (
           <Route path="/safety" element={<AppLayout><SafetyPage /></AppLayout>} />
           <Route path="/inspections" element={<AppLayout><InspectionsPage /></AppLayout>} />
           <Route path="/drivers/:id" element={<AppLayout><DriverDetail /></AppLayout>} />
+          <Route path="/dashcam" element={<AppLayout><DashcamPage /></AppLayout>} />
           <Route path="/planning" element={<AppLayout><PlanningBoardPage /></AppLayout>} />
           <Route path="/fuel" element={<AppLayout><FuelTrackingPage /></AppLayout>} />
           <Route path="/settings" element={<AppLayout><SettingsPage /></AppLayout>} />

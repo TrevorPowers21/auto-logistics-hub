@@ -754,6 +754,102 @@ function normalizeSafetyEvent(raw: SamsaraSafetyEventRaw, idx: number): SamsaraS
   };
 }
 
+// ─── Dashcam Media ───────────────────────────────────────────────────────────
+
+export interface SamsaraDashcamMedia {
+  id: string;
+  vehicleId?: string;
+  vehicleName?: string;
+  driverName?: string;
+  recordedTime: string;
+  recordedAtMs: number;
+  mediaType?: string;
+  inputType?: string;
+  durationMs?: number;
+  thumbnailUrl?: string;
+  videoUrl?: string;
+  triggerReason?: string;
+  latitude?: number;
+  longitude?: number;
+  address?: string;
+}
+
+interface SamsaraDashcamMediaRaw {
+  mediaId?: string;
+  id?: string;
+  vehicle?: { id?: string; name?: string };
+  driver?: { id?: string; name?: string };
+  recordedTime?: string;
+  recordedAtTime?: string;
+  mediaType?: string;
+  inputType?: string;
+  durationMs?: number;
+  duration?: number;
+  thumbnailUrlInfo?: { url?: string };
+  thumbnailUrl?: string;
+  urlInfo?: { url?: string };
+  videoUrl?: string;
+  url?: string;
+  triggerReason?: string;
+  reason?: string;
+  location?: { latitude?: number; longitude?: number; reverseGeo?: { formattedLocation?: string } };
+}
+
+interface SamsaraDashcamResponse {
+  data?: SamsaraDashcamMediaRaw[];
+  pagination?: SamsaraPagination;
+}
+
+/**
+ * Pull dashcam media. Requires "Read Cameras / Camera Media" scope.
+ * Uses /cameras/media endpoint (Samsara v2).
+ */
+export async function fetchSamsaraDashcamMedia(opts?: { lookbackHours?: number }): Promise<SamsaraDashcamMedia[]> {
+  const token = await getSavedSamsaraToken();
+  if (!token) return [];
+  const hours = opts?.lookbackHours ?? 72;
+  const startTime = new Date(Date.now() - hours * 3_600_000).toISOString();
+  const endTime = new Date().toISOString();
+  const out: SamsaraDashcamMedia[] = [];
+  let cursor: string | undefined;
+  while (true) {
+    const params = new URLSearchParams({ startTime, endTime });
+    if (cursor) params.set("after", cursor);
+    const url = `/cameras/media?${params.toString()}`;
+    try {
+      const res = await samsaraFetch<SamsaraDashcamResponse>(url, token);
+      for (const raw of res.data ?? []) {
+        const id = raw.mediaId ?? raw.id ?? "";
+        const time = raw.recordedTime ?? raw.recordedAtTime ?? "";
+        const ms = time ? Date.parse(time) : 0;
+        out.push({
+          id,
+          vehicleId: raw.vehicle?.id,
+          vehicleName: raw.vehicle?.name,
+          driverName: raw.driver?.name,
+          recordedTime: time,
+          recordedAtMs: ms,
+          mediaType: raw.mediaType,
+          inputType: raw.inputType,
+          durationMs: raw.durationMs ?? (raw.duration ? raw.duration * 1000 : undefined),
+          thumbnailUrl: raw.thumbnailUrlInfo?.url ?? raw.thumbnailUrl,
+          videoUrl: raw.urlInfo?.url ?? raw.videoUrl ?? raw.url,
+          triggerReason: raw.triggerReason ?? raw.reason,
+          latitude: raw.location?.latitude,
+          longitude: raw.location?.longitude,
+          address: raw.location?.reverseGeo?.formattedLocation,
+        });
+      }
+      if (!res.pagination?.hasNextPage || !res.pagination.endCursor) break;
+      cursor = res.pagination.endCursor;
+    } catch (err) {
+      console.warn("Samsara dashcam media fetch failed:", err);
+      break;
+    }
+  }
+  return out.sort((a, b) => b.recordedAtMs - a.recordedAtMs);
+}
+
 /**
  * Pull recent safety events (harsh brake/accel/cornering, speeding, distracted, etc.)
  * Requires "Read Safety Events" scope on the token.
