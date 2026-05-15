@@ -13,6 +13,7 @@ import {
   Receipt,
   Building2,
   MapPin,
+  ShieldAlert,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
@@ -44,6 +45,7 @@ const navGroups = [
     items: [
       { title: "Cars", url: "/cars", icon: Car },
       { title: "Fleet", url: "/vehicles", icon: CarFront },
+      { title: "Safety", url: "/safety", icon: ShieldAlert },
     ],
   },
   {

@@ -368,6 +368,101 @@ interface SamsaraAddressesResponse {
   pagination?: SamsaraPagination;
 }
 
+export interface SamsaraSafetyEvent {
+  id: string;
+  time: string;
+  timeMs: number;
+  eventType: string;
+  severity?: string;
+  vehicleId?: string;
+  vehicleName?: string;
+  driverId?: string;
+  driverName?: string;
+  latitude?: number;
+  longitude?: number;
+  address?: string;
+  speedMph?: number;
+  postedSpeedMph?: number;
+  videoUrl?: string;
+}
+
+interface SamsaraSafetyEventRaw {
+  id?: string;
+  happenedAtTime?: string;
+  eventType?: string;
+  behaviorLabels?: string[];
+  severity?: string;
+  severityLabel?: string;
+  vehicle?: { id?: string; name?: string };
+  driver?: { id?: string; name?: string };
+  location?: {
+    latitude?: number;
+    longitude?: number;
+    reverseGeo?: { formattedLocation?: string };
+  };
+  details?: {
+    speedMilesPerHour?: number;
+    postedSpeedLimitMilesPerHour?: number;
+  };
+  mediaUrls?: string[];
+}
+
+interface SamsaraSafetyEventsResponse {
+  data?: SamsaraSafetyEventRaw[];
+  pagination?: SamsaraPagination;
+}
+
+function normalizeSafetyEvent(raw: SamsaraSafetyEventRaw, idx: number): SamsaraSafetyEvent {
+  const time = raw.happenedAtTime ?? "";
+  const timeMs = time ? Date.parse(time) : 0;
+  return {
+    id: raw.id ?? `${timeMs}-${idx}`,
+    time,
+    timeMs,
+    eventType: raw.eventType ?? (raw.behaviorLabels && raw.behaviorLabels[0]) ?? "Unknown",
+    severity: raw.severityLabel ?? raw.severity,
+    vehicleId: raw.vehicle?.id,
+    vehicleName: raw.vehicle?.name,
+    driverId: raw.driver?.id,
+    driverName: raw.driver?.name,
+    latitude: raw.location?.latitude,
+    longitude: raw.location?.longitude,
+    address: raw.location?.reverseGeo?.formattedLocation,
+    speedMph: raw.details?.speedMilesPerHour,
+    postedSpeedMph: raw.details?.postedSpeedLimitMilesPerHour,
+    videoUrl: raw.mediaUrls && raw.mediaUrls.length > 0 ? raw.mediaUrls[0] : undefined,
+  };
+}
+
+/**
+ * Pull recent safety events (harsh brake/accel/cornering, speeding, distracted, etc.)
+ * Requires "Read Safety Events" scope on the token.
+ */
+export async function fetchSamsaraSafetyEvents(opts?: { lookbackHours?: number }): Promise<SamsaraSafetyEvent[]> {
+  const token = await getSavedSamsaraToken();
+  if (!token) return [];
+  const hours = opts?.lookbackHours ?? 24;
+  const startTime = new Date(Date.now() - hours * 3_600_000).toISOString();
+  const out: SamsaraSafetyEvent[] = [];
+  let cursor: string | undefined;
+  while (true) {
+    const params = new URLSearchParams({ startTime });
+    if (cursor) params.set("after", cursor);
+    const url = `/fleet/safety-events?${params.toString()}`;
+    try {
+      const res = await samsaraFetch<SamsaraSafetyEventsResponse>(url, token);
+      const raws = res.data ?? [];
+      out.push(...raws.map((raw, i) => normalizeSafetyEvent(raw, out.length + i)));
+      if (!res.pagination?.hasNextPage || !res.pagination.endCursor) break;
+      cursor = res.pagination.endCursor;
+    } catch (err) {
+      console.warn("Samsara safety events fetch failed:", err);
+      break;
+    }
+  }
+  return out.sort((a, b) => b.timeMs - a.timeMs);
+}
+
 export async function fetchSamsaraAddresses(): Promise<SamsaraAddress[]> {
   const token = await getSavedSamsaraToken();
   if (!token) return [];
