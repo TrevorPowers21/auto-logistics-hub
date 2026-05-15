@@ -404,30 +404,38 @@ export function buildDailyExportText(
     @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
     * { box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 18px 22px; color: #0f172a; background: #ffffff; font-size: 13px; }
-    .header { display: flex; align-items: center; justify-content: space-between; background: linear-gradient(135deg, hsl(221, 65%, 14%) 0%, hsl(221, 60%, 22%) 100%); color: white; padding: 12px 18px; border-radius: 7px; margin-bottom: 12px; border-bottom: 3px solid hsl(351, 85%, 42%); }
+    .header { display: flex; align-items: center; gap: 14px; background: linear-gradient(135deg, hsl(221, 65%, 14%) 0%, hsl(221, 60%, 22%) 100%); color: white; padding: 12px 18px; border-radius: 7px; margin-bottom: 12px; border-bottom: 3px solid hsl(351, 85%, 42%); }
+    .brand-mark { width: 36px; height: 36px; border-radius: 6px; background: hsl(351, 85%, 42%); display: flex; align-items: center; justify-content: center; font-family: Georgia, "Times New Roman", serif; font-style: italic; font-weight: 700; font-size: 22px; color: white; flex-shrink: 0; }
+    .header-text { flex: 1; }
     .header-title { font-size: 17px; font-weight: 700; }
     .header-sub { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.75; font-weight: 600; }
-    .header-date { font-size: 11px; opacity: 0.92; }
+    .header-date { font-size: 11px; opacity: 0.92; text-align: right; }
     .kpi-bar { display: flex; gap: 10px; margin-bottom: 14px; }
-    .kpi { flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px; }
+    .kpi { flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #94a3b8; border-radius: 6px; padding: 8px 12px; }
+    .kpi.kpi-navy { border-left-color: hsl(221, 65%, 15%); }
+    .kpi.kpi-emerald { border-left-color: #10b981; }
+    .kpi.kpi-amber { border-left-color: #f59e0b; }
+    .kpi.kpi-pay { border-left-color: #10b981; background: linear-gradient(135deg, #ecfdf5 0%, #f8fafc 100%); }
     .kpi-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; font-weight: 600; }
     .kpi-value { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; margin-top: 2px; }
     .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
     .driver-card { border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; break-inside: avoid; page-break-inside: avoid; }
-    .driver-head { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
+    .driver-head { display: flex; justify-content: space-between; align-items: center; padding: 7px 10px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
     .driver-name { font-weight: 700; font-size: 13px; color: #0f172a; }
-    .driver-stats { display: flex; gap: 5px; }
-    .cars-pill { background: #e2e8f0; color: #334155; font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 9999px; font-variant-numeric: tabular-nums; }
-    .pay-pill { background: #d1fae5; color: #065f46; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 9999px; font-variant-numeric: tabular-nums; }
+    .driver-stats { display: flex; gap: 5px; align-items: center; }
+    .cars-pill { background: #e2e8f0; color: #334155; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 9999px; font-variant-numeric: tabular-nums; }
+    .pay-pill { background: #10b981; color: white; font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 9999px; font-variant-numeric: tabular-nums; box-shadow: 0 1px 2px rgba(16, 185, 129, 0.25); }
     .stop-table { width: 100%; border-collapse: collapse; font-size: 11px; }
     .stop-table tr { border-bottom: 1px solid #f1f5f9; }
     .stop-table tr:last-child { border-bottom: none; }
-    .footer { margin-top: 10px; font-size: 9px; color: #94a3b8; text-align: center; padding-top: 5px; border-top: 1px solid #f1f5f9; }
+    .footer { margin-top: 12px; display: flex; justify-content: space-between; align-items: center; font-size: 9px; color: #94a3b8; padding-top: 6px; border-top: 1px solid #f1f5f9; }
+    .footer-brand { font-family: Georgia, "Times New Roman", serif; font-style: italic; font-weight: 600; color: hsl(221, 65%, 15%); font-size: 11px; }
   </style>
 </head>
 <body>
   <div class="header">
-    <div>
+    <div class="brand-mark">M</div>
+    <div class="header-text">
       <div class="header-sub">Monroe Auto Transport · Driver Recap</div>
       <div class="header-title">${escapeHtml(heading)}</div>
     </div>
@@ -435,15 +443,18 @@ export function buildDailyExportText(
   </div>
 
   <div class="kpi-bar">
-    <div class="kpi"><div class="kpi-label">Cars Moved</div><div class="kpi-value">${totalCars}</div></div>
-    <div class="kpi"><div class="kpi-label">Completed</div><div class="kpi-value" style="color:#047857;">${completedCars}</div></div>
-    <div class="kpi"><div class="kpi-label">Held / Split</div><div class="kpi-value" style="color:#d97706;">${heldCars}</div></div>
-    ${totalPay !== null ? `<div class="kpi"><div class="kpi-label">Total Pay</div><div class="kpi-value" style="color:#047857;">${fmtCurrency(totalPay)}</div></div>` : ""}
+    <div class="kpi kpi-navy"><div class="kpi-label">Cars Moved</div><div class="kpi-value">${totalCars}</div></div>
+    <div class="kpi kpi-emerald"><div class="kpi-label">Completed</div><div class="kpi-value" style="color:#047857;">${completedCars}</div></div>
+    <div class="kpi kpi-amber"><div class="kpi-label">Held / Split</div><div class="kpi-value" style="color:#b45309;">${heldCars}</div></div>
+    ${totalPay !== null ? `<div class="kpi kpi-pay"><div class="kpi-label">Total Pay</div><div class="kpi-value" style="color:#047857;">${fmtCurrency(totalPay)}</div></div>` : ""}
   </div>
 
   <div class="grid">${driverSections || '<p style="color:#94a3b8;text-align:center;padding:40px;grid-column:1/-1;">No driver activity recorded.</p>'}</div>
 
-  <div class="footer">Monroe Auto Transport Fleet Manager</div>
+  <div class="footer">
+    <span class="footer-brand">Monroe Auto Transport</span>
+    <span>Fleet Operations · ${escapeHtml(new Date().toLocaleDateString())}</span>
+  </div>
 </body>
 </html>`;
 }
@@ -510,10 +521,13 @@ export function buildWeeklyExportText(
   </style>
 </head>
 <body>
-  <div class="header-band">
-    <div style="font-size:11px;letter-spacing:0.15em;text-transform:uppercase;opacity:0.7;font-weight:600;">Monroe Auto Transport</div>
-    <div style="font-size:22px;font-weight:700;margin-top:4px;">Weekly Recap</div>
-    <div style="font-size:14px;opacity:0.85;margin-top:2px;">${escapeHtml(startLabel)} – ${escapeHtml(endLabel)}</div>
+  <div class="header-band" style="display:flex;align-items:center;gap:18px;">
+    <div style="width:52px;height:52px;border-radius:8px;background:hsl(351, 85%, 42%);display:flex;align-items:center;justify-content:center;font-family:Georgia,'Times New Roman',serif;font-style:italic;font-weight:700;font-size:32px;color:white;flex-shrink:0;">M</div>
+    <div style="flex:1;">
+      <div style="font-size:11px;letter-spacing:0.15em;text-transform:uppercase;opacity:0.7;font-weight:600;">Monroe Auto Transport</div>
+      <div style="font-size:22px;font-weight:700;margin-top:4px;">Weekly Recap</div>
+      <div style="font-size:14px;opacity:0.85;margin-top:2px;">${escapeHtml(startLabel)} – ${escapeHtml(endLabel)}</div>
+    </div>
   </div>
 
   <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
@@ -540,8 +554,9 @@ export function buildWeeklyExportText(
     </table>
   </div>
 
-  <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;text-align:center;">
-    Generated ${escapeHtml(new Date().toLocaleString())} · Monroe Auto Transport Fleet Manager
+  <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#94a3b8;">
+    <span style="font-family:Georgia,'Times New Roman',serif;font-style:italic;font-weight:600;color:hsl(221,65%,15%);font-size:13px;">Monroe Auto Transport</span>
+    <span>Fleet Operations · Generated ${escapeHtml(new Date().toLocaleString())}</span>
   </div>
 </body>
 </html>`;
