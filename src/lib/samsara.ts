@@ -133,6 +133,7 @@ export function metersToMiles(meters?: number): number {
 }
 
 export function fmtMiles(meters?: number): string {
+  if (meters == null) return "—";
   return `${Math.round(metersToMiles(meters))} mi`;
 }
 
@@ -153,6 +154,76 @@ export function fmtDuration(ms?: number): string {
  *
  * Replaces the deprecated /v1/fleet/trips path.
  */
+interface SamsaraStreamTripRaw {
+  tripStartTime?: string;
+  tripEndTime?: string;
+  asset?: { id?: string; name?: string };
+  driver?: { id?: string; name?: string };
+  startLocation?: {
+    latitude?: number;
+    longitude?: number;
+    address?: {
+      streetNumber?: string;
+      street?: string;
+      city?: string;
+      state?: string;
+      postalCode?: string;
+    };
+  };
+  endLocation?: {
+    latitude?: number;
+    longitude?: number;
+    address?: {
+      streetNumber?: string;
+      street?: string;
+      city?: string;
+      state?: string;
+      postalCode?: string;
+    };
+  };
+  completionStatus?: string;
+}
+
+interface SamsaraStreamTripsResponse {
+  data?: SamsaraStreamTripRaw[];
+  pagination?: SamsaraPagination;
+}
+
+function formatAddress(loc?: SamsaraStreamTripRaw["endLocation"]): string | undefined {
+  if (!loc?.address) return undefined;
+  const a = loc.address;
+  const parts = [
+    [a.streetNumber, a.street].filter(Boolean).join(" "),
+    a.city,
+    a.state,
+  ].filter((p) => p && p.length > 0);
+  return parts.join(", ") || undefined;
+}
+
+function normalizeStreamTrip(raw: SamsaraStreamTripRaw, idx: number): SamsaraTrip {
+  const startMs = raw.tripStartTime ? Date.parse(raw.tripStartTime) : undefined;
+  const endMs = raw.tripEndTime ? Date.parse(raw.tripEndTime) : undefined;
+  const durationMs = startMs && endMs ? endMs - startMs : undefined;
+  return {
+    id: `${raw.asset?.id ?? "unknown"}-${raw.tripStartTime ?? idx}`,
+    vehicle: raw.asset?.id ? { id: raw.asset.id, name: raw.asset.name } : undefined,
+    driver: raw.driver?.id ? { id: raw.driver.id, name: raw.driver.name } : undefined,
+    startTime: raw.tripStartTime,
+    endTime: raw.tripEndTime,
+    startMs,
+    endMs,
+    startLocation: formatAddress(raw.startLocation),
+    endLocation: formatAddress(raw.endLocation),
+    startCoordinates: raw.startLocation?.latitude != null && raw.startLocation?.longitude != null
+      ? { latitude: raw.startLocation.latitude, longitude: raw.startLocation.longitude }
+      : undefined,
+    endCoordinates: raw.endLocation?.latitude != null && raw.endLocation?.longitude != null
+      ? { latitude: raw.endLocation.latitude, longitude: raw.endLocation.longitude }
+      : undefined,
+    durationMs,
+  };
+}
+
 async function fetchTripsStreamBatch(ids: string[], startTime: string, token: string): Promise<SamsaraTrip[]> {
   const params = new URLSearchParams({
     startTime,
@@ -163,8 +234,9 @@ async function fetchTripsStreamBatch(ids: string[], startTime: string, token: st
   while (true) {
     const url = `/trips/stream?${params.toString()}${cursor ? `&after=${encodeURIComponent(cursor)}` : ""}`;
     try {
-      const res = await samsaraFetch<SamsaraTripsResponse>(url, token);
-      trips.push(...(res.data ?? []));
+      const res = await samsaraFetch<SamsaraStreamTripsResponse>(url, token);
+      const raws = res.data ?? [];
+      trips.push(...raws.map((raw, i) => normalizeStreamTrip(raw, trips.length + i)));
       if (!res.pagination?.hasNextPage || !res.pagination.endCursor) break;
       cursor = res.pagination.endCursor;
     } catch (err) {
