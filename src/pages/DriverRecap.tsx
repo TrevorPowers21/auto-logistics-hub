@@ -392,13 +392,14 @@ export default function DriverRecapPage() {
 
           {/* Day metrics */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <MetricCard label="Total Cars" value={dayTotals.totalCars} />
-            <MetricCard label="Completed" value={dayTotals.completedCars} accent="text-emerald-600" />
-            <MetricCard label="Split" value={dayTotals.heldCars} accent="text-amber-600" />
+            <MetricCard label="Total Cars" value={dayTotals.totalCars} border="navy" />
+            <MetricCard label="Completed" value={dayTotals.completedCars} accent="text-emerald-700" border="emerald" />
+            <MetricCard label="Split" value={dayTotals.heldCars} accent="text-amber-700" border="amber" />
             <MetricCard
               label="Total Pay"
               value={dayTotals.totalPay !== null ? `$${dayTotals.totalPay.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : "—"}
-              accent="text-primary"
+              accent="text-emerald-700"
+              border="emerald"
             />
           </div>
 
@@ -521,10 +522,12 @@ export default function DriverRecapPage() {
               <MetricCard
                 label="Week Total Cars"
                 value={weeklyRows.reduce((s, r) => s + r.totalCars, 0)}
+                border="navy"
               />
               <MetricCard
                 label="Total Revenue"
-                accent="text-emerald-600"
+                accent="text-emerald-700"
+                border="emerald"
                 value={(() => {
                   const weekLoads = getLoads().filter((l) => l.pickupDate && weekDates.includes(l.pickupDate));
                   const rev = weekLoads.reduce((s, l) => s + (l.price || 0), 0);
@@ -533,6 +536,8 @@ export default function DriverRecapPage() {
               />
               <MetricCard
                 label="Week Total Pay"
+                accent="text-emerald-700"
+                border="emerald"
                 value={(() => {
                   const rows = weeklyRows.filter((r) => r.totalPay !== null);
                   if (rows.length === 0) return "—";
@@ -932,12 +937,19 @@ function downloadHtml(html: string, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-function MetricCard({ label, value, accent }: { label: string; value: string | number; accent?: string }) {
+const METRIC_BORDERS: Record<string, string> = {
+  navy: "border-l-primary",
+  emerald: "border-l-emerald-500",
+  amber: "border-l-amber-500",
+  red: "border-l-[hsl(351_85%_42%)]",
+};
+
+function MetricCard({ label, value, accent, border = "navy" }: { label: string; value: string | number; accent?: string; border?: keyof typeof METRIC_BORDERS }) {
   return (
-    <Card>
+    <Card className={cn("border-l-4", METRIC_BORDERS[border])}>
       <CardContent className="p-5">
-        <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
-        <p className={cn("mt-2 text-2xl font-bold tabular-nums", accent)}>{value}</p>
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{label}</p>
+        <p className={cn("mt-1 text-[28px] font-bold tabular-nums leading-tight", accent || "text-foreground")}>{value}</p>
       </CardContent>
     </Card>
   );
