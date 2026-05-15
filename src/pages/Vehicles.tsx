@@ -11,9 +11,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { useStoreData } from "@/hooks/use-store";
 import { decodeVin } from "@/lib/vin";
 import { getAppSetting, generateId, getDrivers, getVehicles, saveAppSetting, saveDrivers, saveVehicles } from "@/lib/store";
-import { getSavedSamsaraToken, isSamsaraConfigured, samsaraStatTypes, syncSamsaraFleetData } from "@/lib/samsara";
+import { getSavedSamsaraToken, isSamsaraConfigured, samsaraStatTypes, syncSamsaraFleetData, fetchSamsaraTrips, fmtMiles, fmtDuration, SamsaraTrip } from "@/lib/samsara";
 import { FleetMaintenanceEntry, Vehicle } from "@/lib/types";
-import { Plus, Save, Search } from "lucide-react";
+import { Plus, Save, Search, Route } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const statusBadge: Record<string, string> = {
@@ -30,6 +30,8 @@ export default function VehiclesPage() {
   const [lastSyncAt, setLastSyncAt] = useState(() => getAppSetting("samsara_last_sync_at"));
   const [cursor, setCursor] = useState(() => getAppSetting("samsara_cursor"));
   const [apiToken, setApiToken] = useState("");
+  const [tripsByVehicle, setTripsByVehicle] = useState<Map<string, SamsaraTrip>>(new Map());
+  const [tripsLoading, setTripsLoading] = useState(false);
   const [vin, setVin] = useState("");
   const [year, setYear] = useState("");
   const [make, setMake] = useState("");
@@ -43,6 +45,35 @@ export default function VehiclesPage() {
       .then((token) => setApiToken(token))
       .catch(() => setApiToken(""));
   }, []);
+
+  const loadTrips = async () => {
+    if (!isSamsaraConfigured(apiToken)) return;
+    setTripsLoading(true);
+    try {
+      const endMs = Date.now();
+      const startMs = endMs - 48 * 60 * 60 * 1000;
+      const trips = await fetchSamsaraTrips({ startMs, endMs });
+      const latest = new Map<string, SamsaraTrip>();
+      for (const trip of trips) {
+        const vid = trip.vehicle?.id;
+        if (!vid) continue;
+        const tripEnd = trip.endMs ?? (trip.endTime ? Date.parse(trip.endTime) : 0);
+        const existing = latest.get(vid);
+        const existingEnd = existing ? (existing.endMs ?? (existing.endTime ? Date.parse(existing.endTime) : 0)) : 0;
+        if (!existing || tripEnd > existingEnd) latest.set(vid, trip);
+      }
+      setTripsByVehicle(latest);
+    } catch (err) {
+      toast("Samsara trips failed", { description: err instanceof Error ? err.message : "Unknown error" });
+    } finally {
+      setTripsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (apiToken) void loadTrips();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiToken]);
 
   const resetAddVehicleForm = () => {
     setVin("");
@@ -129,6 +160,7 @@ export default function VehiclesPage() {
       });
     } finally {
       setSyncing(false);
+      void loadTrips();
     }
   };
 
@@ -221,6 +253,7 @@ export default function VehiclesPage() {
                 <TableHead>VIN</TableHead>
                 <TableHead>Plate</TableHead>
                 <TableHead>Mileage</TableHead>
+                <TableHead>Last Trip</TableHead>
                 <TableHead>Assigned Driver</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
@@ -228,11 +261,13 @@ export default function VehiclesPage() {
             <TableBody>
               {vehicles.map((vehicle) => {
                 const driver = drivers.find((item) => item.id === vehicle.assignedDriverId);
+                const lastTrip = vehicle.externalId ? tripsByVehicle.get(vehicle.externalId) : undefined;
                 return (
                   <FleetUnitRow
                     key={vehicle.id}
                     vehicle={vehicle}
                     driverName={driver?.name || "—"}
+                    lastTrip={lastTrip}
                     onSave={updateVehicle}
                     onRemove={removeVehicle}
                   />
@@ -249,11 +284,13 @@ export default function VehiclesPage() {
 function FleetUnitRow({
   vehicle,
   driverName,
+  lastTrip,
   onSave,
   onRemove,
 }: {
   vehicle: Vehicle;
   driverName: string;
+  lastTrip?: SamsaraTrip;
   onSave: (vehicleId: string, nextVehicle: Vehicle) => void;
   onRemove: (vehicleId: string) => void;
 }) {
@@ -348,6 +385,21 @@ function FleetUnitRow({
         <TableCell className="font-mono text-sm">{vehicle.vin}</TableCell>
         <TableCell className="text-sm">{vehicle.licensePlate}</TableCell>
         <TableCell className="tabular-nums">{(vehicle.mileage || 0).toLocaleString()}</TableCell>
+        <TableCell className="text-xs">
+          {lastTrip ? (
+            <div className="flex flex-col gap-0.5">
+              <div className="flex items-center gap-1.5 font-medium text-foreground tabular-nums">
+                <Route className="h-3 w-3 text-muted-foreground" />
+                {fmtMiles(lastTrip.distanceMeters)} · {fmtDuration(lastTrip.durationMs)}
+              </div>
+              <span className="text-muted-foreground truncate max-w-[160px]" title={lastTrip.endLocation}>
+                {lastTrip.endTime ? new Date(lastTrip.endTime).toLocaleString(undefined, { hour: "numeric", minute: "2-digit", month: "numeric", day: "numeric" }) : "—"}
+              </span>
+            </div>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )}
+        </TableCell>
         <TableCell className="text-sm">{driverName}</TableCell>
         <TableCell>
           <Badge variant="secondary" className={statusBadge[vehicle.status]}>{vehicle.status}</Badge>

@@ -81,6 +81,29 @@ export interface SamsaraVehicleStatsFeedResponse extends SamsaraListResponse<Sam
 export interface SamsaraVehicleDirectoryResponse extends SamsaraListResponse<SamsaraVehicleDirectoryItem> {}
 export interface SamsaraDriversResponse extends SamsaraListResponse<SamsaraDriverItem> {}
 
+export interface SamsaraTrip {
+  id: string;
+  vehicle?: { id: string; name?: string };
+  driver?: { id: string; name?: string };
+  startTime?: string;
+  endTime?: string;
+  startMs?: number;
+  endMs?: number;
+  startLocation?: string;
+  endLocation?: string;
+  startCoordinates?: { latitude: number; longitude: number };
+  endCoordinates?: { latitude: number; longitude: number };
+  distanceMeters?: number;
+  startOdometer?: number;
+  endOdometer?: number;
+  durationMs?: number;
+  fuelConsumedMl?: number;
+  averageSpeedMilesPerHour?: number;
+  maxSpeedMilesPerHour?: number;
+}
+
+export interface SamsaraTripsResponse extends SamsaraListResponse<SamsaraTrip> {}
+
 export interface SamsaraFleetSyncResult {
   vehicles: Vehicle[];
   drivers: Driver[];
@@ -101,6 +124,74 @@ export async function saveSamsaraToken(token: string) {
 
 export function isSamsaraConfigured(token?: string | null) {
   return Boolean(token);
+}
+
+const METERS_PER_MILE = 1609.344;
+
+export function metersToMiles(meters?: number): number {
+  return meters ? meters / METERS_PER_MILE : 0;
+}
+
+export function fmtMiles(meters?: number): string {
+  return `${Math.round(metersToMiles(meters))} mi`;
+}
+
+export function fmtDuration(ms?: number): string {
+  if (!ms) return "—";
+  const totalMin = Math.round(ms / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h === 0) return `${m}m`;
+  return `${h}h ${m}m`;
+}
+
+/**
+ * Fetch Samsara-detected trips for a given time window, optionally filtered by vehicle.
+ * Samsara returns trips that have COMPLETED — in-progress trips don't appear here.
+ */
+export async function fetchSamsaraTrips(opts: {
+  startMs: number;
+  endMs: number;
+  vehicleIds?: string[];
+  driverIds?: string[];
+}): Promise<SamsaraTrip[]> {
+  const token = await getSavedSamsaraToken();
+  if (!token) throw new Error("No Samsara token configured");
+
+  const params = new URLSearchParams({
+    startMs: String(opts.startMs),
+    endMs: String(opts.endMs),
+  });
+  if (opts.vehicleIds?.length) params.append("vehicleIds", opts.vehicleIds.join(","));
+  if (opts.driverIds?.length) params.append("driverIds", opts.driverIds.join(","));
+
+  const trips: SamsaraTrip[] = [];
+  let cursor: string | undefined;
+  while (true) {
+    const url = `/fleet/trips?${params.toString()}${cursor ? `&after=${encodeURIComponent(cursor)}` : ""}`;
+    const res = await samsaraFetch<SamsaraTripsResponse>(url, token);
+    trips.push(...res.data);
+    if (!res.pagination?.hasNextPage || !res.pagination.endCursor) break;
+    cursor = res.pagination.endCursor;
+  }
+  return trips;
+}
+
+/** Get the most recent completed trip for a single vehicle, looking back N hours (default 48). */
+export async function fetchLastTripForVehicle(vehicleExternalId: string, lookbackHours = 48): Promise<SamsaraTrip | null> {
+  const endMs = Date.now();
+  const startMs = endMs - lookbackHours * 60 * 60 * 1000;
+  const trips = await fetchSamsaraTrips({
+    startMs,
+    endMs,
+    vehicleIds: [vehicleExternalId],
+  });
+  if (trips.length === 0) return null;
+  return [...trips].sort((a, b) => {
+    const aEnd = a.endMs ?? (a.endTime ? Date.parse(a.endTime) : 0);
+    const bEnd = b.endMs ?? (b.endTime ? Date.parse(b.endTime) : 0);
+    return bEnd - aEnd;
+  })[0];
 }
 
 const SAMSARA_API_BASE = "/api/samsara";
