@@ -115,6 +115,7 @@ function getLocal<T>(key: StoreKey): T[] {
 
 function setLocal<T>(key: StoreKey, data: T[]) {
   localStorage.setItem(`transport_${key}`, JSON.stringify(data));
+  lastWriteAt.set(key, Date.now());
   window.dispatchEvent(new CustomEvent("store-update", { detail: key }));
 }
 
@@ -123,11 +124,14 @@ function setLocal<T>(key: StoreKey, data: T[]) {
 // Track hydration status
 const hydrated = new Set<string>();
 const hydrating = new Map<string, Promise<void>>();
+// Track most recent local write per key so async hydration can't clobber a save in progress.
+const lastWriteAt = new Map<StoreKey, number>();
 
 async function hydrateKey(key: StoreKey): Promise<void> {
   if (!supabase || hydrated.has(key)) return;
   if (hydrating.has(key)) return hydrating.get(key);
 
+  const hydrateStartedAt = Date.now();
   const table = TABLE_MAP[key];
   const promise = (async () => {
     try {
@@ -176,6 +180,13 @@ async function hydrateKey(key: StoreKey): Promise<void> {
         camelData = camelData.map((l: any) => ({ ...l, carIds: carsByLoad.get(l.id) || undefined }));
       }
 
+      // Race guard: if a local write happened while we were fetching, don't clobber it.
+      const localWriteAt = lastWriteAt.get(key);
+      if (localWriteAt && localWriteAt > hydrateStartedAt) {
+        console.info(`Supabase hydrate ${table}: skipped (local write happened mid-flight)`);
+        hydrated.add(key);
+        return;
+      }
       setLocal(key, camelData as any[]);
       hydrated.add(key);
     } catch (err) {
@@ -222,7 +233,13 @@ async function syncToSupabase<T extends { id: string }>(key: StoreKey, data: T[]
 
     // Then upsert all current rows
     const { error } = await supabase.from(table).upsert(rows, { onConflict: "id" });
-    if (error) console.error(`Supabase upsert ${table}:`, error);
+    if (error) {
+      console.error(`Supabase upsert ${table}:`, error);
+      // Surface the failure to the UI so saves don't ghost on refresh
+      window.dispatchEvent(new CustomEvent("store-sync-error", {
+        detail: { table, message: error.message, hint: error.hint, code: error.code },
+      }));
+    }
 
     // Sync child tables
     if (key === "vehicles") {

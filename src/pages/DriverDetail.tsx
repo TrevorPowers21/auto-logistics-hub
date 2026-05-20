@@ -23,7 +23,7 @@ import { Activity, AlertTriangle, ArrowLeft, ClipboardCheck, Phone, ShieldAlert,
 const statusBadge: Record<string, string> = {
   active: "bg-emerald-100 text-emerald-700",
   inactive: "bg-gray-100 text-gray-600",
-  "on-leave": "bg-amber-100 text-amber-700",
+  on_leave: "bg-amber-100 text-amber-700",
 };
 
 export default function DriverDetail() {

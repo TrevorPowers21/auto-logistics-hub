@@ -1,6 +1,8 @@
+import { useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
+import { toast } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppLayout } from "@/components/AppLayout";
@@ -27,8 +29,23 @@ import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
 
+function SyncErrorListener() {
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { table?: string; message?: string };
+      toast("Save didn't sync to cloud", {
+        description: `${detail?.table || "row"}: ${detail?.message || "unknown error"} — the change is local only and may revert on refresh.`,
+      });
+    };
+    window.addEventListener("store-sync-error", handler);
+    return () => window.removeEventListener("store-sync-error", handler);
+  }, []);
+  return null;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
+    <SyncErrorListener />
     <TooltipProvider>
       <Toaster />
       <Sonner />
